@@ -25,6 +25,7 @@ function saveOptions() {
   };
 
   const filterDuplicates = document.getElementById('filterDuplicates').checked;
+  const filterVerified = document.getElementById('filterVerified').checked;
   const filterLanguage = document.getElementById('filterLanguage').value;
 
   // Parse keywords from textarea (split by newline, trim, remove empty)
@@ -35,6 +36,7 @@ function saveOptions() {
     filters: filters,
     filterContent: filterContent,
     filterDuplicates: filterDuplicates,
+    filterVerified: filterVerified,
     filterLanguage: filterLanguage,
     customKeywords: customKeywords
   }, () => {
@@ -56,6 +58,7 @@ function restoreOptions() {
     'filters',
     'language',
     'filterDuplicates',
+    'filterVerified',
     'filterLanguage',
     'filterContent',
     'customKeywords'
@@ -76,6 +79,7 @@ function restoreOptions() {
 
     // New Rules
     document.getElementById('filterDuplicates').checked = result.filterDuplicates || false;
+    document.getElementById('filterVerified').checked = result.filterVerified || false;
     document.getElementById('filterLanguage').value = result.filterLanguage || 'all';
 
     const content = result.filterContent || defaultContent;

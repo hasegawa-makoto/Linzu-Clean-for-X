@@ -13,6 +13,7 @@ chrome.runtime.onInstalled.addListener(() => {
     },
     // New rule-based settings defaults
     filterDuplicates: false,
+    filterVerified: false, // New: Filter verified accounts
     filterLanguage: 'all', // 'all', 'ja', 'en'
     filterContent: {
       imageOnly: false,

@@ -21,11 +21,19 @@
   <h1 data-i18n="opt_title">Filter Settings</h1>
 
   <div class="section">
-    <h2 data-i18n="opt_lang">Language Settings</h2>
-    <label>UI Language / 表示言語</label>
+    <h2 data-i18n="opt_ui_lang">UI Language</h2>
     <select id="language-select">
       <option value="ja">日本語</option>
       <option value="en">English</option>
+    </select>
+  </div>
+
+  <div class="section">
+    <h2 data-i18n="opt_content_lang">Keep Content Language</h2>
+    <select id="filterLanguage">
+      <option value="all" data-i18n="opt_lang_all">All</option>
+      <option value="ja" data-i18n="opt_lang_ja">Japanese Only</option>
+      <option value="en" data-i18n="opt_lang_en">English Only</option>
     </select>
   </div>
 
@@ -39,12 +47,11 @@
   </div>
 
   <div class="section">
-    <h2 data-i18n="opt_lang">Target Language Filter</h2>
-    <select id="filterLanguage">
-      <option value="all" data-i18n="opt_lang_all">All</option>
-      <option value="ja" data-i18n="opt_lang_ja">Japanese Only</option>
-      <option value="en" data-i18n="opt_lang_en">English Only</option>
-    </select>
+    <h2 data-i18n="opt_verified_title">Verified Accounts</h2>
+    <label>
+      <input type="checkbox" id="filterVerified">
+      <span data-i18n="opt_verified_desc">Hide posts from Verified (Blue Check) accounts.</span>
+    </label>
   </div>
 
   <div class="section">
@@ -70,7 +77,7 @@
 
   <!-- Legacy/AI Filters (Keep them available) -->
   <div class="section">
-    <h2 data-i18n="appTitle">AI / Legacy Filters</h2>
+    <h2 data-i18n="appTitle">Legacy Filters</h2>
     <label>
       <input type="checkbox" id="zombie">
       <span data-i18n="opt_zombie">Remove Impression Zombies</span>

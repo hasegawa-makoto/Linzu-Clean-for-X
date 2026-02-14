@@ -11,13 +11,18 @@ window.LinzuI18n = {
       ui_settings: '設定',
 
       opt_title: 'フィルタ設定',
-      opt_lang: '言語設定',
+      opt_ui_lang: 'UI表示言語',
+      opt_content_lang: '表示を維持する言語',
+
       opt_lang_all: 'すべて',
       opt_lang_ja: '日本語のみ',
       opt_lang_en: '英語のみ',
 
       opt_duplicates_title: '重複投稿の排除',
       opt_duplicates_desc: '同じ内容の投稿が2回目以降表示された場合に非表示にする',
+
+      opt_verified_title: '認証済みアカウント',
+      opt_verified_desc: '認証マーク(Blue Check)が付いたアカウントの投稿を非表示にする',
 
       opt_content_title: 'コンテンツ制限',
       opt_content_img: '画像/動画のみの投稿を非表示',
@@ -47,13 +52,18 @@ window.LinzuI18n = {
       ui_settings: 'Settings',
 
       opt_title: 'Filter Settings',
-      opt_lang: 'Language Settings',
+      opt_ui_lang: 'UI Language',
+      opt_content_lang: 'Keep Content Language',
+
       opt_lang_all: 'All',
       opt_lang_ja: 'Japanese Only',
       opt_lang_en: 'English Only',
 
       opt_duplicates_title: 'Remove Duplicates',
       opt_duplicates_desc: 'Hide subsequent posts with identical content within the session.',
+
+      opt_verified_title: 'Verified Accounts',
+      opt_verified_desc: 'Hide posts from accounts with a Verified (Blue Check) mark.',
 
       opt_content_title: 'Content Restrictions',
       opt_content_img: 'Hide Image/Video Only Posts',

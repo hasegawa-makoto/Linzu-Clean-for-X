@@ -7,6 +7,7 @@ let appSettings = {
   removedCount: 0,
   filters: {}, // zombie, spam, toxic
   filterDuplicates: false,
+  filterVerified: false,
   filterLanguage: 'all', // 'all', 'ja', 'en'
   filterContent: {
     imageOnly: false,
@@ -73,11 +74,8 @@ function injectFloatingUI() {
   // Settings Button Listener
   settingsBtn.addEventListener('click', (e) => {
     e.preventDefault();
-    if (chrome.runtime.openOptionsPage) {
-        chrome.runtime.openOptionsPage();
-    } else {
-        window.open(chrome.runtime.getURL('options/options.html'), '_blank');
-    }
+    const optionsUrl = chrome.runtime.getURL('options/options.html');
+    window.open(optionsUrl, '_blank');
   });
 
   // Listen for storage changes
@@ -91,6 +89,7 @@ function injectFloatingUI() {
       }
       if (changes.filters) appSettings.filters = changes.filters.newValue;
       if (changes.filterDuplicates) appSettings.filterDuplicates = changes.filterDuplicates.newValue;
+      if (changes.filterVerified) appSettings.filterVerified = changes.filterVerified.newValue;
       if (changes.filterLanguage) appSettings.filterLanguage = changes.filterLanguage.newValue;
       if (changes.filterContent) appSettings.filterContent = changes.filterContent.newValue;
       if (changes.customKeywords) appSettings.customKeywords = changes.customKeywords.newValue;
@@ -142,9 +141,9 @@ function checkDuplicate(text) {
   const key = text.trim();
 
   if (seenTexts.has(key)) {
-    return true;
+    return true; // Already seen -> hide
   }
-  seenTexts.add(key);
+  seenTexts.add(key); // First time -> keep
   return false;
 }
 
@@ -191,7 +190,23 @@ function checkContent(article, text) {
   return false;
 }
 
-// 4. Custom Keywords
+// 4. Verified Account Check
+function checkVerified(article) {
+  if (!appSettings.filterVerified) return false;
+
+  // X uses various icons. Verified is usually an SVG with specific aria-label or data-testid
+  // data-testid="icon-verified" is common
+  const verifiedIcon = article.querySelector('svg[data-testid="icon-verified"]');
+  if (verifiedIcon) return true;
+
+  // Fallback check for aria-label
+  const verifiedAria = article.querySelector('svg[aria-label="Verified account"]');
+  if (verifiedAria) return true;
+
+  return false;
+}
+
+// 5. Custom Keywords
 function checkCustomKeywords(text) {
   if (!appSettings.customKeywords || appSettings.customKeywords.length === 0) return false;
 
@@ -201,7 +216,7 @@ function checkCustomKeywords(text) {
   return false;
 }
 
-// 5. Legacy Keywords
+// 6. Legacy Keywords
 function checkLegacyKeywords(text) {
   const keywords = ['稼げる', 'spampromotion', 'zombietest', 'プロモーション'];
   return keywords.some(keyword => text.includes(keyword));
@@ -227,19 +242,25 @@ function processTweet(article) {
     return;
   }
 
-  // 3. Content
+  // 3. Verified Accounts
+  if (checkVerified(article)) {
+    removeTweet(article, 'Verified Account');
+    return;
+  }
+
+  // 4. Content
   if (checkContent(article, text)) {
     removeTweet(article, 'Content Restriction');
     return;
   }
 
-  // 4. Custom Keywords
+  // 5. Custom Keywords
   if (checkCustomKeywords(text)) {
     removeTweet(article, 'Custom Keyword');
     return;
   }
 
-  // 5. Legacy Keywords (if zombie filter enabled)
+  // 6. Legacy Keywords (if zombie filter enabled)
   if (appSettings.filters?.zombie && checkLegacyKeywords(text)) {
     removeTweet(article, 'Zombie/Spam Keyword');
     return;
