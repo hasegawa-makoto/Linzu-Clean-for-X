@@ -17,6 +17,19 @@ let appSettings = {
   customKeywords: []
 };
 
+// Dynamic State (Session only, not persisted to storage for now, or could be)
+let dynamicSettings = {
+  ownerOnly: false,
+  hideReposts: false,
+  focusUser: '' // username string
+};
+
+// Expose for testing
+window.setDynamicSettings = function(settings) {
+    dynamicSettings = { ...dynamicSettings, ...settings };
+    applyDynamicFilters();
+};
+
 // Seen texts for duplicate detection (TextHash -> Count)
 const seenTexts = new Set();
 
@@ -26,10 +39,17 @@ function updateUIText() {
   const title = document.querySelector('.linzu-title');
   const statsLabel = document.querySelector('.linzu-stats-label');
   const settingsBtn = document.querySelector('.linzu-settings-btn');
+  const ownerLabel = document.querySelector('label[for="linzu-owner"]');
+  const repostsLabel = document.querySelector('label[for="linzu-reposts"]');
+  const searchInput = document.getElementById('linzu-search');
 
   if (title) title.textContent = LinzuI18n.t('appTitle');
   if (statsLabel) statsLabel.textContent = LinzuI18n.t('ui_removed');
   if (settingsBtn) settingsBtn.textContent = LinzuI18n.t('ui_settings');
+
+  if (ownerLabel) ownerLabel.lastChild.textContent = LinzuI18n.t('ui_dynamic_owner');
+  if (repostsLabel) repostsLabel.lastChild.textContent = LinzuI18n.t('ui_dynamic_reposts');
+  if (searchInput) searchInput.placeholder = LinzuI18n.t('ui_dynamic_search');
 }
 
 function injectFloatingUI() {
@@ -45,11 +65,23 @@ function injectFloatingUI() {
         <span class="linzu-slider round"></span>
       </label>
     </div>
+
+    <div class="linzu-controls">
+      <label class="linzu-control-item" for="linzu-owner">
+        <input type="checkbox" id="linzu-owner"> ${LinzuI18n.t('ui_dynamic_owner')}
+      </label>
+      <label class="linzu-control-item" for="linzu-reposts">
+        <input type="checkbox" id="linzu-reposts"> ${LinzuI18n.t('ui_dynamic_reposts')}
+      </label>
+      <input type="text" id="linzu-search" class="linzu-search-input" placeholder="${LinzuI18n.t('ui_dynamic_search')}">
+    </div>
+
     <div class="linzu-stats">
       <span class="linzu-stats-label">${LinzuI18n.t('ui_removed')}</span> <span id="linzu-count">0</span>
     </div>
-    <div class="linzu-footer" style="margin-top: 5px; text-align: right;">
-        <a href="#" class="linzu-settings-btn" style="color: #1da1f2; font-size: 11px; text-decoration: none;">${LinzuI18n.t('ui_settings')}</a>
+
+    <div class="linzu-footer">
+        <a href="#" class="linzu-settings-btn">${LinzuI18n.t('ui_settings')}</a>
     </div>
   `;
   document.body.appendChild(uiContainer);
@@ -58,7 +90,14 @@ function injectFloatingUI() {
   const countDisplay = document.getElementById('linzu-count');
   const settingsBtn = document.querySelector('.linzu-settings-btn');
 
-  // Load initial state
+  // Dynamic Control Elements
+  const ownerCheckbox = document.getElementById('linzu-owner');
+  const repostsCheckbox = document.getElementById('linzu-reposts');
+  const searchInput = document.getElementById('linzu-search');
+
+  console.log('Attaching listeners to controls:', { ownerCheckbox, repostsCheckbox, searchInput });
+
+  // Load initial state (Storage)
   loadSettings(() => {
     toggle.checked = appSettings.isEnabled;
     countDisplay.textContent = appSettings.removedCount;
@@ -69,7 +108,42 @@ function injectFloatingUI() {
     const isEnabled = e.target.checked;
     chrome.storage.local.set({ isEnabled: isEnabled });
     console.log(`Linzu Clean: ${isEnabled ? 'Enabled' : 'Disabled'}`);
+
+    // If disabled, we might want to show everything again
+    if (!isEnabled) {
+       applyDynamicFilters();
+    } else {
+       // Re-apply
+       const articles = document.querySelectorAll('article');
+       scanNodes(articles); // Re-run all logic
+       applyDynamicFilters();
+    }
   });
+
+  // Dynamic Controls Listeners
+  if (ownerCheckbox) {
+    ownerCheckbox.addEventListener('change', (e) => {
+      console.log('Owner Checkbox Changed:', e.target.checked);
+      dynamicSettings.ownerOnly = e.target.checked;
+      applyDynamicFilters();
+    });
+  } else { console.error('Owner checkbox not found'); }
+
+  if (repostsCheckbox) {
+    repostsCheckbox.addEventListener('change', (e) => {
+      console.log('Reposts Checkbox Changed:', e.target.checked);
+      dynamicSettings.hideReposts = e.target.checked;
+      applyDynamicFilters();
+    });
+  } else { console.error('Reposts checkbox not found'); }
+
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      console.log('Search Input Changed:', e.target.value);
+      dynamicSettings.focusUser = e.target.value.trim().replace(/^@/, ''); // Remove @ if typed
+      applyDynamicFilters();
+    });
+  } else { console.error('Search input not found'); }
 
   // Settings Button Listener
   settingsBtn.addEventListener('click', (e) => {
@@ -116,7 +190,131 @@ function loadSettings(callback) {
   });
 }
 
-// --- Filtering Logic ---
+// --- Dynamic Filtering Logic Helpers ---
+
+function getUsername(article) {
+  // Extract handle from article.
+  // Strategy: Look for specific elements usually containing handle
+  // Often it's in a span that starts with @ inside a User-Name div
+  // Or in a link to profile
+
+  // Try to find the user handle text (e.g. @username)
+  // X structure varies but usually handle is visible text starting with @
+  // Or inside a link with href matching the pattern
+
+  // Mock environment usually simplifies this.
+  // Real X environment:
+  // <div data-testid="User-Name"> ... <span ...>@handle</span> ... </div>
+
+  const userNameDiv = article.querySelector('[data-testid="User-Name"]');
+  if (userNameDiv) {
+    const textContent = userNameDiv.textContent;
+    // Simple regex to find @handle
+    const match = textContent.match(/@([a-zA-Z0-9_]+)/);
+    if (match) return match[1];
+  }
+
+  // Fallback for mock environment or alternative structure
+  // Look for any link that might be a profile link
+  // or a span with @
+  const links = article.querySelectorAll('a[href^="/"]');
+  for (let link of links) {
+      if (link.getAttribute('href').length > 1 && !link.getAttribute('href').includes('/status/')) {
+          const handle = link.getAttribute('href').substring(1);
+          return handle;
+      }
+  }
+
+  // Mock fallback: look for text starting with @
+  const text = article.innerText;
+  const match = text.match(/@([a-zA-Z0-9_]+)/);
+  if (match) return match[1];
+
+  return null;
+}
+
+function isRepost(article) {
+  // Check for social context indicating repost
+  const socialContext = article.querySelector('[data-testid="socialContext"]');
+  if (socialContext) {
+    const text = socialContext.innerText.toLowerCase();
+    if (text.includes('reposted') || text.includes('リポスト')) {
+      return true;
+    }
+  }
+
+  // Also check for SVG icon that looks like repost (path check is hard, rely on text or specific svg class)
+  // In mock we can use a class or attribute
+  if (article.dataset.isRepost === "true") return true;
+
+  // Verify mocked repost attribute more robustly for testing
+  if (article.getAttribute('data-is-repost') === 'true') return true;
+
+  return false;
+}
+
+function applyDynamicFilters() {
+  if (!appSettings.isEnabled) {
+      console.log('Skipping dynamic filters: disabled');
+      return;
+  }
+
+  const articles = document.querySelectorAll('article');
+  console.log(`Applying Dynamic Filters to ${articles.length} articles. Settings:`, dynamicSettings);
+
+  // Determine current profile owner if on a profile page
+  let currentProfileOwner = null;
+  const pathParts = window.location.pathname.split('/');
+  if (pathParts.length >= 2 && pathParts[1]) {
+      // Assuming first part is user
+      // Exclude common non-user paths
+      const nonUserPaths = ['home', 'explore', 'notifications', 'messages', 'search', 'settings'];
+      if (!nonUserPaths.includes(pathParts[1])) {
+          currentProfileOwner = pathParts[1];
+      }
+  }
+
+  articles.forEach(article => {
+    // If permanently hidden by static rules, skip (keep hidden)
+    if (article.dataset.linzuHidden === "true") return;
+
+    let shouldHide = false;
+    const username = getUsername(article);
+
+    // 1. Owner Only
+    if (dynamicSettings.ownerOnly && currentProfileOwner) {
+        if (username !== currentProfileOwner) {
+            shouldHide = true;
+        }
+    }
+
+    // 2. Hide Reposts
+    if (!shouldHide && dynamicSettings.hideReposts) {
+        if (isRepost(article)) {
+            shouldHide = true;
+        }
+    }
+
+    // 3. Focus User
+    if (!shouldHide && dynamicSettings.focusUser) {
+        if (username !== dynamicSettings.focusUser) {
+            shouldHide = true;
+        }
+    }
+
+    // Apply visibility
+    if (shouldHide) {
+        article.style.display = 'none';
+        article.dataset.linzuDynamicHidden = "true";
+    } else {
+        article.style.display = ''; // Restore to default (block/flex)
+        delete article.dataset.linzuDynamicHidden;
+    }
+  });
+}
+
+
+// --- Filtering Logic (Permanent) ---
 
 function removeTweet(article, reason) {
   if (article.style.display === 'none') return;
@@ -278,6 +476,9 @@ function scanNodes(nodes) {
       }
     }
   });
+
+  // Apply dynamic filters after processing new nodes
+  applyDynamicFilters();
 }
 
 // Initialize I18n then inject UI

@@ -10,6 +10,10 @@ window.LinzuI18n = {
       ui_switch_label: 'ON/OFF',
       ui_settings: '設定',
 
+      ui_dynamic_owner: '本人のみ表示',
+      ui_dynamic_reposts: 'リポスト非表示',
+      ui_dynamic_search: 'ユーザー検索 (@ID)',
+
       opt_title: 'フィルタ設定',
       opt_ui_lang: 'UI表示言語',
       opt_content_lang: '表示を維持する言語',
@@ -50,6 +54,10 @@ window.LinzuI18n = {
       ui_removed: 'Removed:',
       ui_switch_label: 'ON/OFF',
       ui_settings: 'Settings',
+
+      ui_dynamic_owner: 'Owner Only',
+      ui_dynamic_reposts: 'Hide Reposts',
+      ui_dynamic_search: 'Focus User (@ID)',
 
       opt_title: 'Filter Settings',
       opt_ui_lang: 'UI Language',
