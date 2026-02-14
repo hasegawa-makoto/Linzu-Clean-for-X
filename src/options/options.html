@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Linzu Clean for X - Settings</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 20px; }
+    h1 { font-size: 20px; }
+    h2 { font-size: 16px; margin-top: 20px; border-bottom: 1px solid #ccc; padding-bottom: 5px; }
+    label { display: block; margin-bottom: 10px; }
+    .status { color: green; display: none; margin-top: 10px; }
+    select { padding: 5px; }
+  </style>
+  <script src="../utils/i18n.js"></script>
+</head>
+<body>
+  <h1 data-i18n="opt_title">Filter Settings</h1>
+
+  <h2 data-i18n="opt_lang">Language Settings</h2>
+  <div>
+    <select id="language-select">
+      <option value="ja" data-i18n="lang_ja">Japanese</option>
+      <option value="en" data-i18n="lang_en">English</option>
+    </select>
+  </div>
+
+  <h2 data-i18n="opt_title">Filter Settings</h2>
+  <div>
+    <label>
+      <input type="checkbox" id="zombie">
+      <span data-i18n="opt_zombie">Remove Impression Zombies</span>
+    </label>
+    <label>
+      <input type="checkbox" id="spam">
+      <span data-i18n="opt_spam">Remove Promotion/Spam</span>
+    </label>
+    <label>
+      <input type="checkbox" id="toxic">
+      <span data-i18n="opt_toxic">Remove Toxic Content</span>
+    </label>
+  </div>
+  <div id="status" class="status" data-i18n="opt_status_saved">Options saved.</div>
+  <script src="options.js"></script>
+</body>
+</html>
