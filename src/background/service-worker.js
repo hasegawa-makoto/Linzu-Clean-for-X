@@ -11,6 +11,16 @@ chrome.runtime.onInstalled.addListener(() => {
       spam: true,
       toxic: true
     },
-    language: 'ja' // Default language
+    // New rule-based settings defaults
+    filterDuplicates: false,
+    filterLanguage: 'all', // 'all', 'ja', 'en'
+    filterContent: {
+      imageOnly: false,
+      shortPost: false,
+      excessiveLinks: false
+    },
+    customKeywords: [],
+
+    language: 'ja' // Default UI language
   });
 });

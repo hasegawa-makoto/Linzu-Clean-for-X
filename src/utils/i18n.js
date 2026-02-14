@@ -8,12 +8,31 @@ window.LinzuI18n = {
       appTitle: 'Linzu Clean',
       ui_removed: '除去件数:',
       ui_switch_label: 'ON/OFF',
+      ui_settings: '設定',
+
       opt_title: 'フィルタ設定',
+      opt_lang: '言語設定',
+      opt_lang_all: 'すべて',
+      opt_lang_ja: '日本語のみ',
+      opt_lang_en: '英語のみ',
+
+      opt_duplicates_title: '重複投稿の排除',
+      opt_duplicates_desc: '同じ内容の投稿が2回目以降表示された場合に非表示にする',
+
+      opt_content_title: 'コンテンツ制限',
+      opt_content_img: '画像/動画のみの投稿を非表示',
+      opt_content_short: '5文字以下の短文を非表示',
+      opt_content_links: '過剰なリンク/ハッシュタグを含む投稿を非表示',
+
+      opt_keywords_title: 'カスタムキーワード',
+      opt_keywords_placeholder: '非表示にしたい単語を1行に1つ入力してください',
+
       opt_zombie: 'インプレゾンビを除去',
       opt_spam: 'プロモーション・スパムを除去',
       opt_toxic: '感情的なトゲを除去',
-      opt_lang: '言語設定',
+
       opt_status_saved: '設定を保存しました。',
+
       popup_status: 'ステータス:',
       popup_active: '有効',
       popup_disabled: '無効',
@@ -25,12 +44,31 @@ window.LinzuI18n = {
       appTitle: 'Linzu Clean',
       ui_removed: 'Removed:',
       ui_switch_label: 'ON/OFF',
+      ui_settings: 'Settings',
+
       opt_title: 'Filter Settings',
+      opt_lang: 'Language Settings',
+      opt_lang_all: 'All',
+      opt_lang_ja: 'Japanese Only',
+      opt_lang_en: 'English Only',
+
+      opt_duplicates_title: 'Remove Duplicates',
+      opt_duplicates_desc: 'Hide subsequent posts with identical content within the session.',
+
+      opt_content_title: 'Content Restrictions',
+      opt_content_img: 'Hide Image/Video Only Posts',
+      opt_content_short: 'Hide Short Posts (<= 5 chars)',
+      opt_content_links: 'Hide Posts with Excessive Links/Tags',
+
+      opt_keywords_title: 'Custom Keywords',
+      opt_keywords_placeholder: 'Enter words to block, one per line',
+
       opt_zombie: 'Remove Impression Zombies',
       opt_spam: 'Remove Promotion/Spam',
       opt_toxic: 'Remove Toxic Content',
-      opt_lang: 'Language Settings',
+
       opt_status_saved: 'Settings saved.',
+
       popup_status: 'Status:',
       popup_active: 'Active',
       popup_disabled: 'Disabled',
@@ -78,6 +116,21 @@ window.LinzuI18n = {
       const key = el.getAttribute('data-i18n');
       if (key) {
         el.textContent = this.t(key);
+      } else {
+        // Handle placeholders for textareas/inputs
+        const placeholderKey = el.getAttribute('data-i18n-placeholder');
+        if (placeholderKey) {
+          el.placeholder = this.t(placeholderKey);
+        }
+      }
+    });
+
+    // Also check elements with data-i18n-placeholder directly
+    const inputs = document.querySelectorAll('[data-i18n-placeholder]');
+    inputs.forEach(el => {
+      const key = el.getAttribute('data-i18n-placeholder');
+      if (key) {
+        el.placeholder = this.t(key);
       }
     });
   }
