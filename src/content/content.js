@@ -75,27 +75,81 @@ LinzuI18n.init(() => {
 });
 
 
+// --- Filtering Logic ---
+
+// Simple keyword check (sync)
+function checkForKeywords(text) {
+  const keywords = ['稼げる', 'spampromotion', 'zombietest', 'プロモーション'];
+  return keywords.some(keyword => text.includes(keyword));
+}
+
+// AI Analysis Skeleton (async)
+async function analyzePostWithAI(text) {
+  // TODO: Implement actual AI call (e.g. to background script or external API)
+  // For now, this is a placeholder that might simulate network delay
+  return new Promise(resolve => {
+    // Simulate complex check if needed
+    resolve(false);
+  });
+}
+
+function processTweet(article) {
+  if (article.dataset.linzuChecked) return; // Already checked
+  article.dataset.linzuChecked = "true";
+
+  const text = article.innerText || "";
+
+  // 1. Keyword Check (Fast)
+  if (checkForKeywords(text)) {
+    removeTweet(article, text);
+    return;
+  }
+
+  // 2. AI Check (Slower) - Placeholder
+  // analyzePostWithAI(text).then(isSpam => {
+  //   if (isSpam) removeTweet(article, text);
+  // });
+}
+
+function removeTweet(article, text) {
+  article.style.display = 'none';
+  article.dataset.linzuHidden = "true"; // Mark as hidden
+
+  // Log to console
+  console.log(`[Linzu Clean] Removed: ${text.substring(0, 50)}...`);
+
+  // Update counter
+  chrome.storage.local.get(['removedCount'], (result) => {
+    const newCount = (result.removedCount || 0) + 1;
+    chrome.storage.local.set({ removedCount: newCount });
+    // UI update handled by storage listener
+  });
+}
+
+function scanNodes(nodes) {
+  nodes.forEach(node => {
+    if (node.nodeType === 1) { // Element
+      // Check if node is an article or contains articles
+      if (node.tagName === 'ARTICLE') {
+        processTweet(node);
+      } else if (node.querySelectorAll) {
+        const articles = node.querySelectorAll('article');
+        articles.forEach(processTweet);
+      }
+    }
+  });
+}
+
 // Mutation Observer Setup
 const observer = new MutationObserver((mutations) => {
   chrome.storage.local.get(['isEnabled'], (result) => {
-    if (!result.isEnabled) return;
+    if (result.isEnabled === false) return; // Explicitly check for false, undefined is true
 
-    // Placeholder for filtering logic
-    // In the future, we will iterate over mutations and nodes
-    // and apply AI check.
-
-    // Example loop (commented out):
-    /*
     mutations.forEach(mutation => {
-      mutation.addedNodes.forEach(node => {
-        if (node.nodeType === 1) { // Element
-           // Check for tweets/replies
-           // Run AI check
-           // If unwanted, remove and increment counter
-        }
-      });
+      if (mutation.addedNodes.length > 0) {
+        scanNodes(mutation.addedNodes);
+      }
     });
-    */
   });
 });
 
