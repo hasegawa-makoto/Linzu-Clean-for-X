@@ -11,7 +11,6 @@ window.LinzuI18n = {
       ui_settings: '設定',
 
       ui_dynamic_owner: '本人のみ表示',
-      ui_dynamic_reposts: 'リポスト非表示',
       ui_dynamic_search: 'ユーザー検索 (@ID)',
 
       opt_title: 'フィルタ設定',
@@ -36,10 +35,6 @@ window.LinzuI18n = {
       opt_keywords_title: 'カスタムキーワード',
       opt_keywords_placeholder: '非表示にしたい単語を1行に1つ入力してください',
 
-      opt_zombie: 'インプレゾンビを除去',
-      opt_spam: 'プロモーション・スパムを除去',
-      opt_toxic: '感情的なトゲを除去',
-
       opt_status_saved: '設定を保存しました。',
 
       popup_status: 'ステータス:',
@@ -56,7 +51,6 @@ window.LinzuI18n = {
       ui_settings: 'Settings',
 
       ui_dynamic_owner: 'Owner Only',
-      ui_dynamic_reposts: 'Hide Reposts',
       ui_dynamic_search: 'Focus User (@ID)',
 
       opt_title: 'Filter Settings',
@@ -80,10 +74,6 @@ window.LinzuI18n = {
 
       opt_keywords_title: 'Custom Keywords',
       opt_keywords_placeholder: 'Enter words to block, one per line',
-
-      opt_zombie: 'Remove Impression Zombies',
-      opt_spam: 'Remove Promotion/Spam',
-      opt_toxic: 'Remove Toxic Content',
 
       opt_status_saved: 'Settings saved.',
 

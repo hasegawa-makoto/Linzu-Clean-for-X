@@ -1,10 +1,4 @@
 // src/options/options.js
-const defaultFilters = {
-  zombie: true,
-  spam: true,
-  toxic: true
-};
-
 const defaultContent = {
   imageOnly: false,
   shortPost: false,
@@ -12,12 +6,6 @@ const defaultContent = {
 };
 
 function saveOptions() {
-  const filters = {
-    zombie: document.getElementById('zombie').checked,
-    spam: document.getElementById('spam').checked,
-    toxic: document.getElementById('toxic').checked
-  };
-
   const filterContent = {
     imageOnly: document.getElementById('contentImageOnly').checked,
     shortPost: document.getElementById('contentShortPost').checked,
@@ -33,7 +21,6 @@ function saveOptions() {
   const customKeywords = keywordsText.split('\n').map(k => k.trim()).filter(k => k.length > 0);
 
   chrome.storage.local.set({
-    filters: filters,
     filterContent: filterContent,
     filterDuplicates: filterDuplicates,
     filterVerified: filterVerified,
@@ -55,7 +42,6 @@ function showStatus() {
 
 function restoreOptions() {
   chrome.storage.local.get([
-    'filters',
     'language',
     'filterDuplicates',
     'filterVerified',
@@ -63,12 +49,6 @@ function restoreOptions() {
     'filterContent',
     'customKeywords'
   ], (result) => {
-
-    // Legacy Filters
-    const filters = result.filters || defaultFilters;
-    document.getElementById('zombie').checked = filters.zombie !== undefined ? filters.zombie : defaultFilters.zombie;
-    document.getElementById('spam').checked = filters.spam !== undefined ? filters.spam : defaultFilters.spam;
-    document.getElementById('toxic').checked = filters.toxic !== undefined ? filters.toxic : defaultFilters.toxic;
 
     // UI Language
     const lang = result.language || 'ja';

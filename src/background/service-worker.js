@@ -6,14 +6,10 @@ chrome.runtime.onInstalled.addListener(() => {
   chrome.storage.local.set({
     isEnabled: true,
     removedCount: 0,
-    filters: {
-      zombie: true,
-      spam: true,
-      toxic: true
-    },
-    // New rule-based settings defaults
+    filters: {}, // Cleared legacy filters
+    // Rule-based settings defaults
     filterDuplicates: false,
-    filterVerified: false, // New: Filter verified accounts
+    filterVerified: false,
     filterLanguage: 'all', // 'all', 'ja', 'en'
     filterContent: {
       imageOnly: false,
@@ -24,4 +20,11 @@ chrome.runtime.onInstalled.addListener(() => {
 
     language: 'ja' // Default UI language
   });
+});
+
+// Handle messages from content scripts
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === 'openOptions') {
+    chrome.runtime.openOptionsPage();
+  }
 });
