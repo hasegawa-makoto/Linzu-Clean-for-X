@@ -12,11 +12,6 @@ const defaultBot = {
   links: false
 };
 
-const defaultVerified = {
-  blue: false,
-  non_blue: false
-};
-
 function saveOptions() {
   const filterContent = {
     imageOnly: document.getElementById('contentImageOnly').checked,
@@ -31,12 +26,8 @@ function saveOptions() {
     links: document.getElementById('botLinks').checked
   };
 
-  const filterVerified = {
-    blue: document.getElementById('filterVerifiedBlue').checked,
-    non_blue: document.getElementById('filterVerifiedNon').checked
-  };
-
   const filterDuplicates = document.getElementById('filterDuplicates').checked;
+  const filterUnverified = document.getElementById('filterUnverified').checked;
   const filterLanguage = document.getElementById('filterLanguage').value;
 
   // Parse keywords from textarea (split by newline, trim, remove empty)
@@ -47,7 +38,7 @@ function saveOptions() {
     filterContent: filterContent,
     filterBot: filterBot,
     filterDuplicates: filterDuplicates,
-    filterVerified: filterVerified,
+    filterUnverified: filterUnverified,
     filterLanguage: filterLanguage,
     customKeywords: customKeywords
   }, () => {
@@ -68,7 +59,8 @@ function restoreOptions() {
   chrome.storage.local.get([
     'language',
     'filterDuplicates',
-    'filterVerified',
+    'filterUnverified',
+    'filterVerified', // legacy check
     'filterLanguage',
     'filterContent',
     'filterBot',
@@ -86,16 +78,17 @@ function restoreOptions() {
     document.getElementById('filterDuplicates').checked = result.filterDuplicates || false;
     document.getElementById('filterLanguage').value = result.filterLanguage || 'all';
 
-    const verified = result.filterVerified || defaultVerified;
-    // Handle backward compatibility if it was boolean
-    if (typeof verified === 'boolean') {
-        // Assume false means both off, true means ? (probably blue off based on previous logic?)
-        // Previous logic: filterVerified: true -> hide blue check
-        document.getElementById('filterVerifiedBlue').checked = verified;
-        document.getElementById('filterVerifiedNon').checked = false;
+    // Unverified
+    if (result.filterUnverified !== undefined) {
+        document.getElementById('filterUnverified').checked = result.filterUnverified;
     } else {
-        document.getElementById('filterVerifiedBlue').checked = verified.blue || false;
-        document.getElementById('filterVerifiedNon').checked = verified.non_blue || false;
+        // Migration from old filterVerified logic
+        // Old: filterVerified = { non_blue: true/false }
+        if (result.filterVerified && typeof result.filterVerified === 'object') {
+            document.getElementById('filterUnverified').checked = result.filterVerified.non_blue || false;
+        } else {
+            document.getElementById('filterUnverified').checked = false;
+        }
     }
 
     const content = result.filterContent || defaultContent;

@@ -27,8 +27,7 @@ window.LinzuI18n = {
       opt_duplicates_desc: '同じ内容の投稿が2回目以降表示された場合に非表示にする',
 
       opt_verified_title: 'アカウント認証フィルター',
-      opt_verified_blue: '認証済み(Blue Check)を非表示',
-      opt_verified_non: '未認証アカウントを非表示',
+      opt_unverified_title: '未認証アカウント(青バッジなし)を非表示',
 
       opt_content_title: 'コンテンツ制限',
       opt_content_img: '画像/動画のみの投稿を非表示',
@@ -76,8 +75,7 @@ window.LinzuI18n = {
       opt_duplicates_desc: 'Hide subsequent posts with identical content within the session.',
 
       opt_verified_title: 'Verified Account Filter',
-      opt_verified_blue: 'Hide Verified (Blue Check) Accounts',
-      opt_verified_non: 'Hide Non-Verified Accounts',
+      opt_unverified_title: 'Hide Unverified (No Blue Check) Accounts',
 
       opt_content_title: 'Content Restrictions',
       opt_content_img: 'Hide Image/Video Only Posts',

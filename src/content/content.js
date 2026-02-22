@@ -10,7 +10,7 @@ let appSettings = {
   removedCount: 0,
   isMinimized: false,
   filterDuplicates: false,
-  filterVerified: { blue: false, non_blue: false },
+  filterUnverified: false,
   filterLanguage: 'all', // 'all', 'ja', 'en'
   filterContent: {
     imageOnly: false,
@@ -158,7 +158,6 @@ function injectFloatingUI() {
          startObserver();
          const articles = document.querySelectorAll('article[data-testid="tweet"]');
          scanNodes(articles);
-         // applyDynamicFilters is called by scanNodes but we can call it explicitly too
       }
     });
 
@@ -229,7 +228,7 @@ function injectFloatingUI() {
           updateCounterDisplay();
         }
         if (changes.filterDuplicates) appSettings.filterDuplicates = changes.filterDuplicates.newValue;
-        if (changes.filterVerified) appSettings.filterVerified = changes.filterVerified.newValue;
+        if (changes.filterUnverified) appSettings.filterUnverified = changes.filterUnverified.newValue;
         if (changes.filterLanguage) appSettings.filterLanguage = changes.filterLanguage.newValue;
         if (changes.filterContent) appSettings.filterContent = changes.filterContent.newValue;
         if (changes.filterBot) appSettings.filterBot = changes.filterBot.newValue;
@@ -254,9 +253,11 @@ function injectFloatingUI() {
 function loadSettings(callback) {
   chrome.storage.local.get(null, (result) => {
     appSettings = { ...appSettings, ...result };
-    // Backward compatibility for filterVerified
-    if (typeof appSettings.filterVerified === 'boolean') {
-        appSettings.filterVerified = { blue: appSettings.filterVerified, non_blue: false };
+    // Backward compatibility for filterVerified -> filterUnverified
+    if (result.filterUnverified === undefined) {
+        if (result.filterVerified && typeof result.filterVerified === 'object') {
+            appSettings.filterUnverified = result.filterVerified.non_blue;
+        }
     }
     if (callback) callback();
   });
@@ -297,10 +298,6 @@ function getStatusId(article) {
         }
     } catch(e) {}
     return null;
-}
-
-function isMainTweet(article) {
-    return false; // Placeholder
 }
 
 function applyDynamicFilters() {
@@ -438,17 +435,19 @@ function checkContent(article, text, handle) {
   return false;
 }
 
-// 4. Verified Account Check
-function checkVerified(article) {
-  const verifiedIcon = article.querySelector('svg[data-testid="icon-verified"]');
-  const verifiedAria = article.querySelector('svg[aria-label="Verified account"]');
-  const isVerified = !!(verifiedIcon || verifiedAria);
+// 4. Verified Account Check (UNVERIFIED)
+function checkUnverified(article) {
+  if (!appSettings.filterUnverified) return false;
 
-  if (isVerified) {
-      if (appSettings.filterVerified?.blue) return true;
-  } else {
-      if (appSettings.filterVerified?.non_blue) return true;
-  }
+  // Look for verified icon in User-Name section
+  const userNameDiv = article.querySelector('[data-testid="User-Name"]');
+  if (!userNameDiv) return false; // Safety
+
+  const verifiedIcon = userNameDiv.querySelector('svg[data-testid="icon-verified"]');
+
+  // If NO verified icon found -> Unverified -> Hide
+  if (!verifiedIcon) return true;
+
   return false;
 }
 
@@ -499,16 +498,11 @@ function checkBotLinks(article) {
 
 // 7. Thread Spam Check
 function checkThreadSpam(handle) {
-    // Apply even if filterDuplicates is off? Request implies "Restriction".
-    // I'll assume it falls under "Duplicate/Spam" category logic.
-    // The previous logic guarded it with filterDuplicates. I'll keep it or make it always on if it's considered "Bot Detection"?
-    // The prompt puts it under "Filtering Logic Refinement".
-    // I'll keep it guarded by filterDuplicates to avoid aggressive default behavior, or just leave as is.
-    // But verify logic: "Non-OP user > 1 reply".
-
+    if (!appSettings.filterDuplicates) return false;
     const path = document.body.dataset.linzuMockPath || location.pathname;
+    // Only apply if we are in a thread view
     if (!path.includes('/status/')) return false;
-    if (!currentThreadOP) return false;
+    if (!currentThreadOP) return false; // OP not found yet
     if (!handle) return false;
 
     // Don't filter OP
@@ -519,6 +513,7 @@ function checkThreadSpam(handle) {
     threadReplyCounts.set(handle, count);
 
     if (count > 1) {
+        // Remove 2nd onwards
         return true;
     }
     return false;
@@ -566,7 +561,10 @@ function processTweet(article) {
 
     if (checkLanguage(article)) { removeTweet(article, 'Language'); return; }
     if (checkDuplicate(contentText, statusId)) { removeTweet(article, 'Duplicate'); return; }
-    if (checkVerified(article)) { removeTweet(article, 'Verified Filter'); return; }
+
+    // New Unverified check
+    if (checkUnverified(article)) { removeTweet(article, 'Unverified Account'); return; }
+
     if (checkContent(article, contentText, handle)) { removeTweet(article, 'Content'); return; }
     if (checkCustomKeywords(contentText)) { removeTweet(article, 'Keyword'); return; }
 
@@ -619,12 +617,8 @@ function restoreAllVisibility() {
         article.style.display = '';
         delete article.dataset.linzuHidden;
         delete article.dataset.linzuDynamicHidden;
-        // Optionally keep linzuChecked to avoid re-scan if logic unchanged?
-        // But if we toggle ON, we might want to re-scan.
-        // If we keep linzuChecked, scanNodes->processTweet will return early.
         delete article.dataset.linzuChecked;
     });
-    // Reset counters display
     updateCounterDisplay();
 }
 

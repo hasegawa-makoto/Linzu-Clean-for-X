@@ -6,14 +6,10 @@ chrome.runtime.onInstalled.addListener(() => {
   chrome.storage.local.set({
     isEnabled: true,
     removedCount: 0,
-    isMinimized: false, // New: UI state
     filters: {}, // Cleared legacy filters
     // Rule-based settings defaults
     filterDuplicates: false,
-    filterVerified: {
-        blue: false,
-        non_blue: false
-    },
+    filterUnverified: false, // Updated: Hide Unverified Accounts
     filterLanguage: 'all', // 'all', 'ja', 'en'
     filterContent: {
       imageOnly: false,
