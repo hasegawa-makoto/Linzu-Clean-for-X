@@ -39,6 +39,9 @@ let sessionDynamicHiddenCount = 0;
 // URL Tracking for reset
 let lastUrl = location.href;
 
+// Observer instance
+let observer = null;
+
 // Duplicate Detection: Map<TextHash, Set<StatusID>>
 // We store seen content text mapped to the Status IDs that have it.
 const seenContent = new Map();
@@ -147,11 +150,15 @@ function injectFloatingUI() {
       chrome.storage.local.set({ isEnabled: isEnabled });
 
       if (!isEnabled) {
-         applyDynamicFilters();
+         if (observer) observer.disconnect();
+         restoreAllVisibility();
+         console.log('[Linzu] Extension Disabled. Filters cleared.');
       } else {
+         // Re-enable
+         startObserver();
          const articles = document.querySelectorAll('article[data-testid="tweet"]');
          scanNodes(articles);
-         applyDynamicFilters();
+         // applyDynamicFilters is called by scanNodes but we can call it explicitly too
       }
     });
 
@@ -606,14 +613,31 @@ function resetSession() {
     console.log('[Linzu] Session reset due to navigation.');
 }
 
+function restoreAllVisibility() {
+    const hiddenArticles = document.querySelectorAll('article[data-linzu-hidden="true"], article[data-linzu-dynamic-hidden="true"]');
+    hiddenArticles.forEach(article => {
+        article.style.display = '';
+        delete article.dataset.linzuHidden;
+        delete article.dataset.linzuDynamicHidden;
+        // Optionally keep linzuChecked to avoid re-scan if logic unchanged?
+        // But if we toggle ON, we might want to re-scan.
+        // If we keep linzuChecked, scanNodes->processTweet will return early.
+        delete article.dataset.linzuChecked;
+    });
+    // Reset counters display
+    updateCounterDisplay();
+}
+
 LinzuI18n.init(() => {
   injectFloatingUI();
   startObserver();
 });
 
 function startObserver() {
+  if (observer) observer.disconnect(); // Safety
+
   console.log('[Linzu] Starting Observer...');
-  const observer = new MutationObserver((mutations) => {
+  observer = new MutationObserver((mutations) => {
     if (!appSettings.isEnabled) return;
 
     if (location.href !== lastUrl) {
