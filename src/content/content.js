@@ -48,8 +48,7 @@ const seenContent = new Map();
 const seenStatusIds = new Set();
 
 // Thread Spam Tracking
-// Map<UserHandle, Count>
-const threadReplyCounts = new Map();
+let threadLastSpeaker = null;
 let currentThreadOP = null;
 
 
@@ -496,7 +495,7 @@ function checkBotLinks(article) {
     return false;
 }
 
-// 7. Thread Spam Check
+// 7. Thread Spam Check (Consecutive Speaker)
 function checkThreadSpam(handle) {
     if (!appSettings.filterDuplicates) return false;
     const path = document.body.dataset.linzuMockPath || location.pathname;
@@ -505,17 +504,20 @@ function checkThreadSpam(handle) {
     if (!currentThreadOP) return false; // OP not found yet
     if (!handle) return false;
 
-    // Don't filter OP
-    if (handle === currentThreadOP) return false;
+    // Case 1: OP is speaking (Always allow)
+    if (handle === currentThreadOP) {
+        threadLastSpeaker = handle;
+        return false;
+    }
 
-    // Check reply count
-    const count = (threadReplyCounts.get(handle) || 0) + 1;
-    threadReplyCounts.set(handle, count);
-
-    if (count > 1) {
-        // Remove 2nd onwards
+    // Case 2: Same non-OP speaker consecutively
+    if (handle === threadLastSpeaker) {
+        // Consecutive post by same user -> Hide
         return true;
     }
+
+    // Case 3: New speaker (Interleaved) -> Allow
+    threadLastSpeaker = handle;
     return false;
 }
 
@@ -604,7 +606,7 @@ function resetSession() {
     sessionDynamicHiddenCount = 0;
     seenContent.clear();
     seenStatusIds.clear();
-    threadReplyCounts.clear();
+    threadLastSpeaker = null;
     currentThreadOP = null;
     lastUrl = location.href;
     updateCounterDisplay();
