@@ -70,27 +70,6 @@
   color: #1da1f2;
 }
 
-.linzu-minimize-btn {
-  background: none;
-  border: none;
-  color: #8899a6;
-  font-size: 16px;
-  cursor: pointer;
-  padding: 0 5px;
-  line-height: 1;
-  margin-left: auto;
-  margin-right: 10px;
-}
-
-.linzu-minimize-btn:hover {
-  color: #1da1f2;
-}
-
-/* Hide minimize button when minimized (whole UI is expand button) */
-#linzu-floating-ui.linzu-minimized .linzu-minimize-btn {
-  display: none;
-}
-
 .linzu-stats {
   font-size: 12px;
   color: #8899a6;
@@ -187,15 +166,23 @@ input:checked + .linzu-slider:before {
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px solid #38444d;
-  text-align: right;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  align-items: center;
 }
 
-.linzu-settings-btn {
+.linzu-settings-btn, .linzu-hide-btn {
   color: #1da1f2;
   font-size: 11px;
   text-decoration: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
 }
 
-.linzu-settings-btn:hover {
+.linzu-settings-btn:hover, .linzu-hide-btn:hover {
   text-decoration: underline;
 }

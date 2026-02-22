@@ -9,6 +9,8 @@ window.LinzuI18n = {
       ui_removed: '除去件数:',
       ui_switch_label: 'ON/OFF',
       ui_settings: '設定',
+      ui_hide_panel: 'パネルを閉じる',
+      ui_show_panel: 'パネルを表示',
 
       ui_dynamic_owner: '本人のみ表示',
       ui_dynamic_search: 'ユーザー検索 (@ID)',
@@ -24,9 +26,8 @@ window.LinzuI18n = {
       opt_duplicates_title: '重複投稿の排除',
       opt_duplicates_desc: '同じ内容の投稿が2回目以降表示された場合に非表示にする',
 
-      opt_verified_title: 'アカウント認証フィルター',
-      opt_verified_blue: '認証済み(Blue Check)を非表示',
-      opt_verified_non: '未認証アカウントを非表示',
+      opt_verified_title: '認証済みアカウント',
+      opt_verified_desc: '認証マーク(Blue Check)が付いたアカウントの投稿を非表示にする',
 
       opt_content_title: 'コンテンツ制限',
       opt_content_img: '画像/動画のみの投稿を非表示',
@@ -56,6 +57,8 @@ window.LinzuI18n = {
       ui_removed: 'Removed:',
       ui_switch_label: 'ON/OFF',
       ui_settings: 'Settings',
+      ui_hide_panel: 'Hide Panel',
+      ui_show_panel: 'Show Panel',
 
       ui_dynamic_owner: 'Owner Only',
       ui_dynamic_search: 'Focus User (@ID)',
@@ -71,9 +74,8 @@ window.LinzuI18n = {
       opt_duplicates_title: 'Remove Duplicates',
       opt_duplicates_desc: 'Hide subsequent posts with identical content within the session.',
 
-      opt_verified_title: 'Verified Account Filter',
-      opt_verified_blue: 'Hide Verified (Blue Check) Accounts',
-      opt_verified_non: 'Hide Non-Verified Accounts',
+      opt_verified_title: 'Verified Accounts',
+      opt_verified_desc: 'Hide posts from accounts with a Verified (Blue Check) mark.',
 
       opt_content_title: 'Content Restrictions',
       opt_content_img: 'Hide Image/Video Only Posts',

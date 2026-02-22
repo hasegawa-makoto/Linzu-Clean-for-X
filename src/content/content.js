@@ -56,12 +56,14 @@ function updateUIText() {
     const title = document.querySelector('.linzu-title');
     const statsLabel = document.querySelector('.linzu-stats-label');
     const settingsBtn = document.querySelector('.linzu-settings-btn');
+    const hideBtn = document.getElementById('linzu-hide-panel');
     const ownerLabel = document.querySelector('label[for="linzu-owner"]');
     const searchInput = document.getElementById('linzu-search');
 
     if (title) title.textContent = LinzuI18n.t('appTitle');
     if (statsLabel) statsLabel.textContent = LinzuI18n.t('ui_removed');
     if (settingsBtn) settingsBtn.textContent = LinzuI18n.t('ui_settings');
+    if (hideBtn) hideBtn.textContent = LinzuI18n.t('ui_hide_panel');
 
     if (ownerLabel) ownerLabel.lastChild.textContent = LinzuI18n.t('ui_dynamic_owner');
     if (searchInput) searchInput.placeholder = LinzuI18n.t('ui_dynamic_search');
@@ -92,7 +94,6 @@ function injectFloatingUI() {
     uiContainer.innerHTML = `
       <div class="linzu-header">
         <span class="linzu-title">${LinzuI18n.t('appTitle')}</span>
-        <button class="linzu-minimize-btn" id="linzu-minimize" title="Minimize">_</button>
         <label class="linzu-switch">
           <input type="checkbox" id="linzu-toggle">
           <span class="linzu-slider round"></span>
@@ -111,6 +112,7 @@ function injectFloatingUI() {
       </div>
 
       <div class="linzu-footer">
+          <button id="linzu-hide-panel" class="linzu-hide-btn">${LinzuI18n.t('ui_hide_panel')}</button>
           <a href="#" class="linzu-settings-btn">${LinzuI18n.t('ui_settings')}</a>
       </div>
     `;
@@ -127,7 +129,7 @@ function injectFloatingUI() {
     const ownerCheckbox = document.getElementById('linzu-owner');
     const searchInput = document.getElementById('linzu-search');
     const settingsBtn = document.querySelector('.linzu-settings-btn');
-    const minimizeBtn = document.getElementById('linzu-minimize');
+    const hideBtn = document.getElementById('linzu-hide-panel');
 
     // Load initial state (Storage)
     loadSettings(() => {
@@ -153,9 +155,9 @@ function injectFloatingUI() {
       }
     });
 
-    // Minimize Button Listener
-    minimizeBtn.addEventListener('click', (e) => {
-        e.stopPropagation(); // Prevent triggering container click
+    // Hide Panel Button Listener
+    hideBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
         appSettings.isMinimized = true;
         uiContainer.classList.add('linzu-minimized');
         chrome.storage.local.set({ isMinimized: true });
@@ -171,14 +173,11 @@ function injectFloatingUI() {
     });
 
     // Prevent container click logic from interfering with controls when Expanded
-    // Stop propagation on interactive elements
     const interactiveElements = uiContainer.querySelectorAll('input, button, a, label');
     interactiveElements.forEach(el => {
-        if (el.id !== 'linzu-minimize') { // Minimize button is handled separately
-            el.addEventListener('click', (e) => {
-                e.stopPropagation();
-            });
-        }
+        el.addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
     });
 
     // Dynamic Controls Listeners (Direct)
@@ -404,13 +403,25 @@ function checkLanguage(article) {
 }
 
 // 3. Content Check
-function checkContent(article, text) {
+function checkContent(article, text, handle) {
+  // If user is OP, skip image-only filter
+  const isOP = currentThreadOP && handle === currentThreadOP;
+
   if (appSettings.filterContent?.imageOnly) {
-     const hasMedia = article.querySelector('div[data-testid="tweetPhoto"]') || article.querySelector('div[data-testid="videoPlayer"]');
-     if (!text.trim() && hasMedia) return true;
+     if (!isOP) { // Only apply if not OP
+         const hasTextDiv = article.querySelector('div[data-testid="tweetText"]');
+         const hasMedia = article.querySelector('div[data-testid="tweetPhoto"]') || article.querySelector('div[data-testid="videoPlayer"]');
+
+         // If no text div AND has media -> Image Only
+         if (!hasTextDiv && hasMedia) return true;
+         // If text div exists but is empty
+         if (hasTextDiv && !hasTextDiv.innerText.trim() && hasMedia) return true;
+     }
   }
   if (appSettings.filterContent?.shortPost) {
-    if (text.trim().length > 0 && text.trim().length <= 5) return true;
+    // Only check length if text div exists, to avoid checking metadata
+    const hasTextDiv = article.querySelector('div[data-testid="tweetText"]');
+    if (hasTextDiv && text.trim().length > 0 && text.trim().length <= 5) return true;
   }
   if (appSettings.filterContent?.excessiveLinks) {
      const links = (text.match(/https?:\/\//g) || []).length;
@@ -481,11 +492,16 @@ function checkBotLinks(article) {
 
 // 7. Thread Spam Check
 function checkThreadSpam(handle) {
-    if (!appSettings.filterDuplicates) return false;
+    // Apply even if filterDuplicates is off? Request implies "Restriction".
+    // I'll assume it falls under "Duplicate/Spam" category logic.
+    // The previous logic guarded it with filterDuplicates. I'll keep it or make it always on if it's considered "Bot Detection"?
+    // The prompt puts it under "Filtering Logic Refinement".
+    // I'll keep it guarded by filterDuplicates to avoid aggressive default behavior, or just leave as is.
+    // But verify logic: "Non-OP user > 1 reply".
+
     const path = document.body.dataset.linzuMockPath || location.pathname;
-    // Only apply if we are in a thread view
     if (!path.includes('/status/')) return false;
-    if (!currentThreadOP) return false; // OP not found yet
+    if (!currentThreadOP) return false;
     if (!handle) return false;
 
     // Don't filter OP
@@ -496,7 +512,6 @@ function checkThreadSpam(handle) {
     threadReplyCounts.set(handle, count);
 
     if (count > 1) {
-        // Remove 2nd onwards
         return true;
     }
     return false;
@@ -545,7 +560,7 @@ function processTweet(article) {
     if (checkLanguage(article)) { removeTweet(article, 'Language'); return; }
     if (checkDuplicate(contentText, statusId)) { removeTweet(article, 'Duplicate'); return; }
     if (checkVerified(article)) { removeTweet(article, 'Verified Filter'); return; }
-    if (checkContent(article, contentText)) { removeTweet(article, 'Content'); return; }
+    if (checkContent(article, contentText, handle)) { removeTweet(article, 'Content'); return; }
     if (checkCustomKeywords(contentText)) { removeTweet(article, 'Keyword'); return; }
 
     // Thread Spam (check last)
