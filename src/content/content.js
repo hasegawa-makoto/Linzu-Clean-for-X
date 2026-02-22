@@ -1,10 +1,17 @@
 // Linzu Clean for X - Content Script
-console.log('[Linzu] Starting...');
 
 // Safety: Wrap everything in a try-catch to prevent crashing the page
 try {
 
-// State
+// --- Constants & Regex (Pre-compiled) ---
+const REGEX_USER_HANDLE = /@([a-zA-Z0-9_]+)/;
+const REGEX_STATUS_ID = /\/status\/(\d+)/;
+const REGEX_DIGITS_5 = /\d{5,}$/;
+const REGEX_LINKS = /https?:\/\//g;
+const REGEX_EXTERNAL_LINKS = /https?:\/\/(?!x\.com|twitter\.com)/;
+const REGEX_HASHTAGS = /#/g;
+
+// --- State ---
 let appSettings = {
   isEnabled: true,
   removedCount: 0,
@@ -43,16 +50,20 @@ let lastUrl = location.href;
 let observer = null;
 
 // Duplicate Detection: Map<TextHash, Set<StatusID>>
-// We store seen content text mapped to the Status IDs that have it.
 const seenContent = new Map();
 const seenStatusIds = new Set();
+const MAX_CACHE_SIZE = 500;
 
 // Thread Spam Tracking
 let threadLastSpeaker = null;
 let currentThreadOP = null;
 
+// Debounce Timer for Dynamic Filters
+let dynamicFilterTimeout = null;
 
-// Helper to update text content of UI elements
+
+// --- UI Helpers ---
+
 function updateUIText() {
   try {
     const title = document.querySelector('.linzu-title');
@@ -70,7 +81,7 @@ function updateUIText() {
     if (ownerLabel) ownerLabel.lastChild.textContent = LinzuI18n.t('ui_dynamic_owner');
     if (searchInput) searchInput.placeholder = LinzuI18n.t('ui_dynamic_search');
   } catch (e) {
-    console.error('[Linzu] Error updating UI text:', e);
+    // Silent fail
   }
 }
 
@@ -82,7 +93,7 @@ function updateCounterDisplay() {
       countDisplay.textContent = total;
     }
   } catch (e) {
-    console.error('[Linzu] Error updating counter:', e);
+    // Silent fail
   }
 }
 
@@ -119,13 +130,9 @@ function injectFloatingUI() {
       </div>
     `;
 
-    if (!document.body) {
-        console.warn('[Linzu] document.body not ready');
-        return;
-    }
+    if (!document.body) return;
 
     document.body.appendChild(uiContainer);
-    console.log('[Linzu] UI Injected');
 
     const toggle = document.getElementById('linzu-toggle');
     const ownerCheckbox = document.getElementById('linzu-owner');
@@ -133,17 +140,16 @@ function injectFloatingUI() {
     const settingsBtn = document.querySelector('.linzu-settings-btn');
     const hideBtn = document.getElementById('linzu-hide-panel');
 
-    // Load initial state (Storage)
+    // Load initial state
     loadSettings(() => {
       toggle.checked = appSettings.isEnabled;
-      // Apply minimized state
       if (appSettings.isMinimized) {
           uiContainer.classList.add('linzu-minimized');
       }
       updateCounterDisplay();
     });
 
-    // Toggle Event Listener
+    // Toggle
     toggle.addEventListener('change', (e) => {
       const isEnabled = e.target.checked;
       chrome.storage.local.set({ isEnabled: isEnabled });
@@ -151,18 +157,16 @@ function injectFloatingUI() {
       if (!isEnabled) {
          if (observer) observer.disconnect();
          restoreAllVisibility();
-         resetSession(); // Reset all counters and tracking
-         chrome.storage.local.set({ removedCount: 0 }); // Reset storage count
-         console.log('[Linzu] Extension Disabled. Filters cleared and reset.');
+         resetSession();
+         chrome.storage.local.set({ removedCount: 0 });
       } else {
-         // Re-enable
          startObserver();
          const articles = document.querySelectorAll('article[data-testid="tweet"]');
          scanNodes(articles);
       }
     });
 
-    // Hide Panel Button Listener
+    // UI Controls
     hideBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         appSettings.isMinimized = true;
@@ -170,7 +174,6 @@ function injectFloatingUI() {
         chrome.storage.local.set({ isMinimized: true });
     });
 
-    // Expand Listener (Click on container when minimized)
     uiContainer.addEventListener('click', (e) => {
         if (uiContainer.classList.contains('linzu-minimized')) {
             appSettings.isMinimized = false;
@@ -179,55 +182,47 @@ function injectFloatingUI() {
         }
     });
 
-    // Prevent container click logic from interfering with controls when Expanded
     const interactiveElements = uiContainer.querySelectorAll('input, button, a, label');
     interactiveElements.forEach(el => {
-        el.addEventListener('click', (e) => {
-            e.stopPropagation();
-        });
+        el.addEventListener('click', (e) => e.stopPropagation());
     });
 
-    // Dynamic Controls Listeners (Direct)
+    // Dynamic settings
     if (ownerCheckbox) {
       ownerCheckbox.addEventListener('change', (e) => {
         dynamicSettings.ownerOnly = e.target.checked;
-        applyDynamicFilters();
+        scheduleDynamicFilters();
       });
     }
 
     if (searchInput) {
       searchInput.addEventListener('input', (e) => {
         dynamicSettings.focusUser = e.target.value.trim().replace(/^@/, '');
-        applyDynamicFilters();
+        scheduleDynamicFilters();
       });
     }
 
-    // Settings Button Listener (Message passing)
     settingsBtn.addEventListener('click', (e) => {
       e.preventDefault();
       try {
         chrome.runtime.sendMessage({ action: 'openOptions' });
-      } catch(err) {
-        console.error('[Linzu] Failed to send openOptions message:', err);
-      }
+      } catch(err) {}
     });
 
-    // Listen for storage changes
+    // Storage Listener
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area === 'local') {
         if (changes.isEnabled) appSettings.isEnabled = changes.isEnabled.newValue;
         if (changes.isMinimized) {
             appSettings.isMinimized = changes.isMinimized.newValue;
-            if (appSettings.isMinimized) {
-                uiContainer.classList.add('linzu-minimized');
-            } else {
-                uiContainer.classList.remove('linzu-minimized');
-            }
+            if (appSettings.isMinimized) uiContainer.classList.add('linzu-minimized');
+            else uiContainer.classList.remove('linzu-minimized');
         }
         if (changes.removedCount) {
           appSettings.removedCount = changes.removedCount.newValue;
           updateCounterDisplay();
         }
+        // Update local state for other settings
         if (changes.filterDuplicates) appSettings.filterDuplicates = changes.filterDuplicates.newValue;
         if (changes.filterUnverified) appSettings.filterUnverified = changes.filterUnverified.newValue;
         if (changes.filterLanguage) appSettings.filterLanguage = changes.filterLanguage.newValue;
@@ -236,25 +231,19 @@ function injectFloatingUI() {
         if (changes.customKeywords) appSettings.customKeywords = changes.customKeywords.newValue;
 
         if (changes.language) {
-          LinzuI18n.setLocale(changes.language.newValue, () => {
-            updateUIText();
-          });
+          LinzuI18n.setLocale(changes.language.newValue, () => updateUIText());
         }
-
         if (changes.isEnabled) {
           toggle.checked = changes.isEnabled.newValue;
         }
       }
     });
-  } catch (e) {
-    console.error('[Linzu] Error injecting UI:', e);
-  }
+  } catch (e) {}
 }
 
 function loadSettings(callback) {
   chrome.storage.local.get(null, (result) => {
     appSettings = { ...appSettings, ...result };
-    // Backward compatibility for filterVerified -> filterUnverified
     if (result.filterUnverified === undefined) {
         if (result.filterVerified && typeof result.filterVerified === 'object') {
             appSettings.filterUnverified = result.filterVerified.non_blue;
@@ -271,7 +260,7 @@ function getUsername(article) {
     const userNameDiv = article.querySelector('[data-testid="User-Name"]');
     if (userNameDiv) {
       const textContent = userNameDiv.textContent;
-      const match = textContent.match(/@([a-zA-Z0-9_]+)/);
+      const match = textContent.match(REGEX_USER_HANDLE);
       if (match) return match[1];
     }
     const links = article.querySelectorAll('a[href^="/"]');
@@ -282,10 +271,9 @@ function getUsername(article) {
         }
     }
     const text = article.innerText;
-    const match = text.match(/@([a-zA-Z0-9_]+)/);
+    const match = text.match(REGEX_USER_HANDLE);
     if (match) return match[1];
-  } catch (e) {
-  }
+  } catch (e) {}
   return null;
 }
 
@@ -294,11 +282,32 @@ function getStatusId(article) {
         const links = article.querySelectorAll('a[href*="/status/"]');
         for (let link of links) {
             const href = link.getAttribute('href');
-            const match = href.match(/\/status\/(\d+)/);
+            const match = href.match(REGEX_STATUS_ID);
             if (match) return match[1];
         }
     } catch(e) {}
     return null;
+}
+
+function getCurrentProfileOwner() {
+    try {
+        if (document.body.dataset.linzuMockOwner) {
+            return document.body.dataset.linzuMockOwner;
+        }
+        const pathParts = window.location.pathname.split('/');
+        if (pathParts.length >= 2 && pathParts[1]) {
+            const nonUserPaths = ['home', 'explore', 'notifications', 'messages', 'search', 'settings'];
+            if (!nonUserPaths.includes(pathParts[1])) {
+                return pathParts[1];
+            }
+        }
+    } catch(e) {}
+    return null;
+}
+
+function scheduleDynamicFilters() {
+    if (dynamicFilterTimeout) clearTimeout(dynamicFilterTimeout);
+    dynamicFilterTimeout = setTimeout(applyDynamicFilters, 200);
 }
 
 function applyDynamicFilters() {
@@ -317,31 +326,33 @@ function applyDynamicFilters() {
         return;
     }
 
-    let currentProfileOwner = null;
-    try {
-        if (document.body.dataset.linzuMockOwner) {
-            currentProfileOwner = document.body.dataset.linzuMockOwner;
-        } else {
-            const pathParts = window.location.pathname.split('/');
-            if (pathParts.length >= 2 && pathParts[1]) {
-                const nonUserPaths = ['home', 'explore', 'notifications', 'messages', 'search', 'settings'];
-                if (!nonUserPaths.includes(pathParts[1])) {
-                    currentProfileOwner = pathParts[1];
-                }
+    const currentProfileOwner = getCurrentProfileOwner();
+    const hasOwnerFilter = dynamicSettings.ownerOnly && currentProfileOwner;
+    const hasFocusFilter = !!dynamicSettings.focusUser;
+
+    // Optimization: Skip loop if no dynamic filters active
+    if (!hasOwnerFilter && !hasFocusFilter) {
+         articles.forEach(article => {
+            if (article.dataset.linzuDynamicHidden) {
+                article.style.display = '';
+                delete article.dataset.linzuDynamicHidden;
             }
-        }
-    } catch(e) {}
+        });
+        updateCounterDisplay();
+        return;
+    }
 
     articles.forEach(article => {
+      // Don't re-hide already permanently hidden tweets
       if (article.dataset.linzuHidden === "true") return;
 
       let shouldHide = false;
       const username = getUsername(article);
 
-      if (dynamicSettings.ownerOnly && currentProfileOwner) {
+      if (hasOwnerFilter) {
           if (username !== currentProfileOwner) shouldHide = true;
       }
-      if (!shouldHide && dynamicSettings.focusUser) {
+      if (!shouldHide && hasFocusFilter) {
           if (username !== dynamicSettings.focusUser) shouldHide = true;
       }
 
@@ -357,37 +368,36 @@ function applyDynamicFilters() {
       }
     });
     updateCounterDisplay();
-  } catch (e) {
-    console.error('[Linzu] Error applying dynamic filters:', e);
-  }
+  } catch (e) {}
 }
 
 
 // --- Filtering Logic (Permanent) ---
 
-function removeTweet(article, reason) {
+function removeTweet(article) {
   if (article.style.display === 'none' || article.dataset.linzuHidden === "true") return;
 
   article.style.display = 'none';
   article.dataset.linzuHidden = "true";
 
-  console.log(`[Linzu Clean] Removed (${reason}):`, article.innerText.substring(0, 30));
-
   localRemovedCount++;
   updateCounterDisplay();
 }
 
-// 1. Duplicate Check (Status ID)
+// 1. Duplicate Check
 function checkDuplicate(text, statusId) {
-  if (!appSettings.filterDuplicates) return false;
   if (!text || text.length < 5) return false;
   if (!statusId) return false;
 
   if (seenStatusIds.has(statusId)) return false;
 
   const contentKey = text.trim();
-  if (seenContent.has(contentKey)) {
-      return true;
+  if (seenContent.has(contentKey)) return true;
+
+  // Memory Management: Prune if too large
+  if (seenStatusIds.size > MAX_CACHE_SIZE) {
+      seenStatusIds.clear();
+      seenContent.clear();
   }
 
   seenContent.set(contentKey, statusId);
@@ -397,7 +407,6 @@ function checkDuplicate(text, statusId) {
 
 // 2. Language Check
 function checkLanguage(article) {
-  if (appSettings.filterLanguage === 'all') return false;
   const langDiv = article.querySelector('div[lang]');
   if (!langDiv) return false;
   const lang = langDiv.getAttribute('lang');
@@ -409,52 +418,40 @@ function checkLanguage(article) {
 
 // 3. Content Check
 function checkContent(article, text, handle) {
-  // If user is OP, skip image-only filter
   const isOP = currentThreadOP && handle === currentThreadOP;
 
   if (appSettings.filterContent?.imageOnly) {
-     if (!isOP) { // Only apply if not OP
+     if (!isOP) {
          const hasTextDiv = article.querySelector('div[data-testid="tweetText"]');
          const hasMedia = article.querySelector('div[data-testid="tweetPhoto"]') || article.querySelector('div[data-testid="videoPlayer"]');
 
-         // If no text div AND has media -> Image Only
          if (!hasTextDiv && hasMedia) return true;
-         // If text div exists but is empty
          if (hasTextDiv && !hasTextDiv.innerText.trim() && hasMedia) return true;
      }
   }
   if (appSettings.filterContent?.shortPost) {
-    // Only check length if text div exists, to avoid checking metadata
     const hasTextDiv = article.querySelector('div[data-testid="tweetText"]');
     if (hasTextDiv && text.trim().length > 0 && text.trim().length <= 5) return true;
   }
   if (appSettings.filterContent?.excessiveLinks) {
-     const links = (text.match(/https?:\/\//g) || []).length;
-     const tags = (text.match(/#/g) || []).length;
+     const links = (text.match(REGEX_LINKS) || []).length;
+     const tags = (text.match(REGEX_HASHTAGS) || []).length;
      if (links + tags >= 5) return true;
   }
   return false;
 }
 
-// 4. Verified Account Check (UNVERIFIED)
+// 4. Verified Account Check
 function checkUnverified(article) {
-  if (!appSettings.filterUnverified) return false;
-
-  // Look for verified icon in User-Name section
   const userNameDiv = article.querySelector('[data-testid="User-Name"]');
-  if (!userNameDiv) return false; // Safety
-
+  if (!userNameDiv) return false;
   const verifiedIcon = userNameDiv.querySelector('svg[data-testid="icon-verified"]');
-
-  // If NO verified icon found -> Unverified -> Hide
   if (!verifiedIcon) return true;
-
   return false;
 }
 
 // 5. Custom Keywords
 function checkCustomKeywords(text) {
-  if (!appSettings.customKeywords || appSettings.customKeywords.length === 0) return false;
   for (const keyword of appSettings.customKeywords) {
     if (text.includes(keyword)) return true;
   }
@@ -462,15 +459,13 @@ function checkCustomKeywords(text) {
 }
 
 // 6. Bot Detection
-function checkBotDigits(article, handle) {
-    if (!appSettings.filterBot?.digits) return false;
+function checkBotDigits(handle) {
     if (!handle) return false;
-    if (/\d{5,}$/.test(handle)) return true;
+    if (REGEX_DIGITS_5.test(handle)) return true;
     return false;
 }
 
 function checkBotDefaultIcon(article) {
-    if (!appSettings.filterBot?.defaultIcon) return false;
     const userAvatar = article.querySelector('div[data-testid="Tweet-User-Avatar"] img');
     if (userAvatar) {
         const src = userAvatar.getAttribute('src') || "";
@@ -479,8 +474,7 @@ function checkBotDefaultIcon(article) {
     return false;
 }
 
-function checkBotEmoji(article, fullText) {
-    if (!appSettings.filterBot?.emoji) return false;
+function checkBotEmoji(article) {
     const tweetTextNode = article.querySelector('div[data-testid="tweetText"]');
     const contentText = tweetTextNode ? tweetTextNode.innerText.trim() : "";
     if (tweetTextNode) {
@@ -490,35 +484,26 @@ function checkBotEmoji(article, fullText) {
 }
 
 function checkBotLinks(article) {
-    if (!appSettings.filterBot?.links) return false;
     const tweetTextNode = article.querySelector('div[data-testid="tweetText"]');
     const contentText = tweetTextNode ? tweetTextNode.innerText : article.innerText;
-    if (contentText.match(/https?:\/\/(?!x\.com|twitter\.com)/)) return true;
+    if (contentText.match(REGEX_EXTERNAL_LINKS)) return true;
     return false;
 }
 
-// 7. Thread Spam Check (Consecutive Speaker)
+// 7. Thread Spam Check
 function checkThreadSpam(handle) {
-    if (!appSettings.filterDuplicates) return false;
     const path = document.body.dataset.linzuMockPath || location.pathname;
-    // Only apply if we are in a thread view
     if (!path.includes('/status/')) return false;
-    if (!currentThreadOP) return false; // OP not found yet
+    if (!currentThreadOP) return false;
     if (!handle) return false;
 
-    // Case 1: OP is speaking (Always allow)
     if (handle === currentThreadOP) {
         threadLastSpeaker = handle;
         return false;
     }
 
-    // Case 2: Same non-OP speaker consecutively
-    if (handle === threadLastSpeaker) {
-        // Consecutive post by same user -> Hide
-        return true;
-    }
+    if (handle === threadLastSpeaker) return true;
 
-    // Case 3: New speaker (Interleaved) -> Allow
     threadLastSpeaker = handle;
     return false;
 }
@@ -526,83 +511,80 @@ function checkThreadSpam(handle) {
 
 function processTweet(article) {
   try {
-    if (article.dataset.linzuChecked) return;
-    article.dataset.linzuChecked = "true";
+    // 1. Already Processed? (Early Exit)
+    if (article.dataset.linzuProcessed) return;
+    article.dataset.linzuProcessed = "true";
 
     const handle = getUsername(article);
     const statusId = getStatusId(article);
 
-    // Skip reprocessing same tweet ID (prevents re-render spam count)
-    if (statusId && seenStatusIds.has(statusId)) return;
+    // 2. Absolute Privilege (Owner)
+    const currentProfileOwner = getCurrentProfileOwner();
+    if (currentProfileOwner && handle === currentProfileOwner) return;
 
-    // Extract pure text content for duplicate checking
+    // 3. Skip reprocessing logic if no ID found or ID already hidden
+    // (Wait, we need to check duplicate ID before skipping)
+
+    // Pre-calculations
     const tweetTextNode = article.querySelector('div[data-testid="tweetText"]');
     const contentText = tweetTextNode ? tweetTextNode.innerText : (article.innerText || "");
-    const text = article.innerText || "";
 
     const path = document.body.dataset.linzuMockPath || location.pathname;
 
-    // Identify OP if this is the first tweet in a thread view
+    // Identify OP (Thread view)
     if (path.includes('/status/') && !currentThreadOP && statusId) {
-        const urlStatusIdMatch = path.match(/\/status\/(\d+)/);
+        const urlStatusIdMatch = path.match(REGEX_STATUS_ID);
         if (urlStatusIdMatch && urlStatusIdMatch[1] === statusId) {
             currentThreadOP = handle;
-            console.log('[Linzu] Identified Thread OP:', currentThreadOP);
-            // Don't filter main tweet!
             return;
         }
     }
 
-    // Skip filtering if it's the main tweet (by ID match)
-    const urlStatusIdMatch = path.match(/\/status\/(\d+)/);
+    // Skip main tweet
+    const urlStatusIdMatch = path.match(REGEX_STATUS_ID);
     if (urlStatusIdMatch && urlStatusIdMatch[1] === statusId) return;
 
-    // Check Bot Filters
-    if (checkBotDigits(article, handle)) { removeTweet(article, 'Bot: Digits'); return; }
-    if (checkBotDefaultIcon(article)) { removeTweet(article, 'Bot: Icon'); return; }
-    if (checkBotEmoji(article, contentText)) { removeTweet(article, 'Bot: Emoji'); return; }
-    if (checkBotLinks(article)) { removeTweet(article, 'Bot: Link'); return; }
+    // Filter Checks (Strict Gating)
+    if (appSettings.filterBot?.digits && checkBotDigits(handle)) { removeTweet(article); return; }
+    if (appSettings.filterBot?.defaultIcon && checkBotDefaultIcon(article)) { removeTweet(article); return; }
+    if (appSettings.filterBot?.emoji && checkBotEmoji(article)) { removeTweet(article); return; }
+    if (appSettings.filterBot?.links && checkBotLinks(article)) { removeTweet(article); return; }
 
-    if (checkLanguage(article)) { removeTweet(article, 'Language'); return; }
-    if (checkDuplicate(contentText, statusId)) { removeTweet(article, 'Duplicate'); return; }
+    if (appSettings.filterLanguage !== 'all' && checkLanguage(article)) { removeTweet(article); return; }
+    if (appSettings.filterDuplicates && checkDuplicate(contentText, statusId)) { removeTweet(article); return; }
+    if (appSettings.filterUnverified && checkUnverified(article)) { removeTweet(article); return; }
 
-    // New Unverified check
-    if (checkUnverified(article)) { removeTweet(article, 'Unverified Account'); return; }
+    if (appSettings.filterContent && (appSettings.filterContent.imageOnly || appSettings.filterContent.shortPost || appSettings.filterContent.excessiveLinks)) {
+        if (checkContent(article, contentText, handle)) { removeTweet(article); return; }
+    }
 
-    if (checkContent(article, contentText, handle)) { removeTweet(article, 'Content'); return; }
-    if (checkCustomKeywords(contentText)) { removeTweet(article, 'Keyword'); return; }
+    if (appSettings.customKeywords?.length > 0 && checkCustomKeywords(contentText)) { removeTweet(article); return; }
 
-    // Thread Spam (check last)
-    if (checkThreadSpam(handle)) { removeTweet(article, 'Thread Spam'); return; }
+    if (appSettings.filterDuplicates && checkThreadSpam(handle)) { removeTweet(article); return; }
 
-  } catch (e) {
-    console.error('[Linzu] Error processing tweet:', e);
-  }
+  } catch (e) {}
 }
 
 function scanNodes(nodes) {
   try {
-    const elements = Array.from(nodes).filter(node => node.nodeType === 1);
-
-    elements.forEach(node => {
-        if (node.id === 'linzu-floating-ui' || node.classList.contains('linzu-ignore')) return;
+    // Optimized loop
+    for (const node of nodes) {
+        if (node.nodeType !== 1) continue;
+        if (node.id === 'linzu-floating-ui' || node.classList.contains('linzu-ignore')) continue;
 
         if (node.tagName === 'ARTICLE' && node.getAttribute('data-testid') === 'tweet') {
             processTweet(node);
-        }
-
-        if (node.querySelectorAll) {
+        } else if (node.querySelectorAll) {
             const articles = node.querySelectorAll('article[data-testid="tweet"]');
-            articles.forEach(processTweet);
+            for (const article of articles) {
+                processTweet(article);
+            }
         }
-    });
-    applyDynamicFilters();
-  } catch (e) {
-    console.error('[Linzu] Error in scanNodes:', e);
-  }
+    }
+    scheduleDynamicFilters();
+  } catch (e) {}
 }
 
-// Reset logic
 function resetSession() {
     localRemovedCount = 0;
     sessionDynamicHiddenCount = 0;
@@ -612,7 +594,6 @@ function resetSession() {
     currentThreadOP = null;
     lastUrl = location.href;
     updateCounterDisplay();
-    console.log('[Linzu] Session reset due to navigation.');
 }
 
 function restoreAllVisibility() {
@@ -621,7 +602,7 @@ function restoreAllVisibility() {
         article.style.display = '';
         delete article.dataset.linzuHidden;
         delete article.dataset.linzuDynamicHidden;
-        delete article.dataset.linzuChecked;
+        delete article.dataset.linzuProcessed;
     });
     updateCounterDisplay();
 }
@@ -629,12 +610,16 @@ function restoreAllVisibility() {
 LinzuI18n.init(() => {
   injectFloatingUI();
   startObserver();
+  // Initial scan of existing content
+  const existingArticles = document.querySelectorAll('article[data-testid="tweet"]');
+  if (existingArticles.length > 0) {
+      scanNodes(existingArticles);
+  }
 });
 
 function startObserver() {
-  if (observer) observer.disconnect(); // Safety
+  if (observer) observer.disconnect();
 
-  console.log('[Linzu] Starting Observer...');
   observer = new MutationObserver((mutations) => {
     if (!appSettings.isEnabled) return;
 
@@ -643,15 +628,14 @@ function startObserver() {
     }
 
     const addedNodes = [];
-    mutations.forEach(mutation => {
-      if (mutation.target.id === 'linzu-floating-ui' || mutation.target.closest('#linzu-floating-ui')) {
-          return;
-      }
-
-      if (mutation.addedNodes.length > 0) {
-        addedNodes.push(...mutation.addedNodes);
-      }
-    });
+    for (const mutation of mutations) {
+       if (mutation.target.id === 'linzu-floating-ui' || mutation.target.closest('#linzu-floating-ui')) continue;
+       if (mutation.addedNodes.length > 0) {
+           for (const node of mutation.addedNodes) {
+               addedNodes.push(node);
+           }
+       }
+    }
 
     if (addedNodes.length > 0) {
       scanNodes(addedNodes);
@@ -663,22 +647,17 @@ function startObserver() {
         childList: true,
         subtree: true
       });
-      console.log('[Linzu] Observer Started');
-  } else {
-      console.warn('[Linzu] document.body not ready for observer');
   }
 }
 
 // Expose for testing
 window.setDynamicSettings = function(settings) {
     dynamicSettings = { ...dynamicSettings, ...settings };
-    applyDynamicFilters();
+    scheduleDynamicFilters();
 };
 
 window.mockNavigation = function(newUrl) {
     history.pushState({}, "", newUrl);
 };
 
-} catch (globalError) {
-    console.error('[Linzu] CRITICAL ERROR:', globalError);
-}
+} catch (globalError) {}
