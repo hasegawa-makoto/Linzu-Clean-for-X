@@ -12,6 +12,11 @@ const defaultBot = {
   links: false
 };
 
+const defaultVerified = {
+  blue: false,
+  non_blue: false
+};
+
 function saveOptions() {
   const filterContent = {
     imageOnly: document.getElementById('contentImageOnly').checked,
@@ -26,8 +31,12 @@ function saveOptions() {
     links: document.getElementById('botLinks').checked
   };
 
+  const filterVerified = {
+    blue: document.getElementById('filterVerifiedBlue').checked,
+    non_blue: document.getElementById('filterVerifiedNon').checked
+  };
+
   const filterDuplicates = document.getElementById('filterDuplicates').checked;
-  const filterVerified = document.getElementById('filterVerified').checked;
   const filterLanguage = document.getElementById('filterLanguage').value;
 
   // Parse keywords from textarea (split by newline, trim, remove empty)
@@ -75,8 +84,19 @@ function restoreOptions() {
 
     // New Rules
     document.getElementById('filterDuplicates').checked = result.filterDuplicates || false;
-    document.getElementById('filterVerified').checked = result.filterVerified || false;
     document.getElementById('filterLanguage').value = result.filterLanguage || 'all';
+
+    const verified = result.filterVerified || defaultVerified;
+    // Handle backward compatibility if it was boolean
+    if (typeof verified === 'boolean') {
+        // Assume false means both off, true means ? (probably blue off based on previous logic?)
+        // Previous logic: filterVerified: true -> hide blue check
+        document.getElementById('filterVerifiedBlue').checked = verified;
+        document.getElementById('filterVerifiedNon').checked = false;
+    } else {
+        document.getElementById('filterVerifiedBlue').checked = verified.blue || false;
+        document.getElementById('filterVerifiedNon').checked = verified.non_blue || false;
+    }
 
     const content = result.filterContent || defaultContent;
     document.getElementById('contentImageOnly').checked = content.imageOnly || false;

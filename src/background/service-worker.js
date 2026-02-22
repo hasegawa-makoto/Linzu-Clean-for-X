@@ -9,7 +9,10 @@ chrome.runtime.onInstalled.addListener(() => {
     filters: {}, // Cleared legacy filters
     // Rule-based settings defaults
     filterDuplicates: false,
-    filterVerified: false,
+    filterVerified: {
+        blue: false,
+        non_blue: false
+    },
     filterLanguage: 'all', // 'all', 'ja', 'en'
     filterContent: {
       imageOnly: false,

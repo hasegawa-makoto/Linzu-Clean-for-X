@@ -9,7 +9,7 @@ let appSettings = {
   isEnabled: true,
   removedCount: 0,
   filterDuplicates: false,
-  filterVerified: false,
+  filterVerified: { blue: false, non_blue: false },
   filterLanguage: 'all', // 'all', 'ja', 'en'
   filterContent: {
     imageOnly: false,
@@ -38,8 +38,15 @@ let sessionDynamicHiddenCount = 0;
 // URL Tracking for reset
 let lastUrl = location.href;
 
-// Seen texts for duplicate detection (TextHash -> Count)
-const seenTexts = new Set();
+// Duplicate Detection: Map<TextHash, Set<StatusID>>
+// We store seen content text mapped to the Status IDs that have it.
+const seenContent = new Map();
+const seenStatusIds = new Set();
+
+// Thread Spam Tracking
+// Map<UserHandle, Count>
+const threadReplyCounts = new Map();
+let currentThreadOP = null;
 
 
 // Helper to update text content of UI elements
@@ -168,7 +175,6 @@ function injectFloatingUI() {
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area === 'local') {
         if (changes.isEnabled) appSettings.isEnabled = changes.isEnabled.newValue;
-        // removedCount from storage ignored for display (using local)
         if (changes.filterDuplicates) appSettings.filterDuplicates = changes.filterDuplicates.newValue;
         if (changes.filterVerified) appSettings.filterVerified = changes.filterVerified.newValue;
         if (changes.filterLanguage) appSettings.filterLanguage = changes.filterLanguage.newValue;
@@ -195,11 +201,15 @@ function injectFloatingUI() {
 function loadSettings(callback) {
   chrome.storage.local.get(null, (result) => {
     appSettings = { ...appSettings, ...result };
+    // Backward compatibility for filterVerified
+    if (typeof appSettings.filterVerified === 'boolean') {
+        appSettings.filterVerified = { blue: appSettings.filterVerified, non_blue: false };
+    }
     if (callback) callback();
   });
 }
 
-// --- Dynamic Filtering Logic Helpers ---
+// --- Logic Helpers ---
 
 function getUsername(article) {
   try {
@@ -209,7 +219,6 @@ function getUsername(article) {
       const match = textContent.match(/@([a-zA-Z0-9_]+)/);
       if (match) return match[1];
     }
-
     const links = article.querySelectorAll('a[href^="/"]');
     for (let link of links) {
         const href = link.getAttribute('href');
@@ -217,7 +226,6 @@ function getUsername(article) {
             return href.substring(1);
         }
     }
-
     const text = article.innerText;
     const match = text.match(/@([a-zA-Z0-9_]+)/);
     if (match) return match[1];
@@ -226,10 +234,44 @@ function getUsername(article) {
   return null;
 }
 
+function getStatusId(article) {
+    try {
+        const links = article.querySelectorAll('a[href*="/status/"]');
+        for (let link of links) {
+            const href = link.getAttribute('href');
+            const match = href.match(/\/status\/(\d+)/);
+            if (match) return match[1];
+        }
+    } catch(e) {}
+    return null;
+}
+
+function isMainTweet(article) {
+    // Determine if this is the main tweet in a detail view.
+    // Usually it doesn't have a "Replying to" header context above it within the same cell logic?
+    // Hard to detect structurally reliably.
+    // However, in conversation view, the main tweet is usually focused.
+    // A heuristic: check if it contains the conversation thread line? No.
+    // Or check tabindex. Main tweet often has tabindex="-1" on some inner div or is the target of navigation.
+
+    // Better heuristic: It usually appears alone or at top without "Show this thread".
+    // Let's rely on aria-labelledby="detail-header" if parent has it? No.
+
+    // For now, let's assume we can't easily detect Main Tweet structurally without more research.
+    // BUT, we can detect if it's the *first* tweet processed in a new /status/ URL load?
+    // Or we can check if it is the "Conversation" owner?
+
+    // Let's check `data-testid="tweet"` parent structure.
+    // Main tweet often lacks the social context header unless it's a thread.
+
+    // For this implementation, we will skip "Thread Spam Logic" on the FIRST tweet we see in a thread view?
+    // We already track `currentThreadOP`.
+    return false; // Placeholder
+}
+
 function applyDynamicFilters() {
   try {
     const articles = document.querySelectorAll('article[data-testid="tweet"]');
-
     sessionDynamicHiddenCount = 0;
 
     if (!appSettings.isEnabled) {
@@ -244,7 +286,6 @@ function applyDynamicFilters() {
     }
 
     let currentProfileOwner = null;
-
     try {
         if (document.body.dataset.linzuMockOwner) {
             currentProfileOwner = document.body.dataset.linzuMockOwner;
@@ -265,18 +306,11 @@ function applyDynamicFilters() {
       let shouldHide = false;
       const username = getUsername(article);
 
-      // 1. Owner Only
       if (dynamicSettings.ownerOnly && currentProfileOwner) {
-          if (username !== currentProfileOwner) {
-              shouldHide = true;
-          }
+          if (username !== currentProfileOwner) shouldHide = true;
       }
-
-      // 2. Focus User
       if (!shouldHide && dynamicSettings.focusUser) {
-          if (username !== dynamicSettings.focusUser) {
-              shouldHide = true;
-          }
+          if (username !== dynamicSettings.focusUser) shouldHide = true;
       }
 
       if (shouldHide) {
@@ -290,7 +324,6 @@ function applyDynamicFilters() {
           }
       }
     });
-
     updateCounterDisplay();
   } catch (e) {
     console.error('[Linzu] Error applying dynamic filters:', e);
@@ -301,6 +334,10 @@ function applyDynamicFilters() {
 // --- Filtering Logic (Permanent) ---
 
 function removeTweet(article, reason) {
+  // Main Tweet Exception
+  // If we can identify main tweet, return.
+  // For now, if currentThreadOP matches and it's the first time seeing it?
+
   if (article.style.display === 'none' || article.dataset.linzuHidden === "true") return;
 
   article.style.display = 'none';
@@ -312,14 +349,21 @@ function removeTweet(article, reason) {
   updateCounterDisplay();
 }
 
-// 1. Duplicate Check
-function checkDuplicate(text) {
+// 1. Duplicate Check (Status ID)
+function checkDuplicate(text, statusId) {
   if (!appSettings.filterDuplicates) return false;
   if (!text || text.length < 5) return false;
+  if (!statusId) return false;
 
-  const key = text.trim();
-  if (seenTexts.has(key)) return true;
-  seenTexts.add(key);
+  if (seenStatusIds.has(statusId)) return false;
+
+  const contentKey = text.trim();
+  if (seenContent.has(contentKey)) {
+      return true;
+  }
+
+  seenContent.set(contentKey, statusId);
+  seenStatusIds.add(statusId);
   return false;
 }
 
@@ -354,11 +398,15 @@ function checkContent(article, text) {
 
 // 4. Verified Account Check
 function checkVerified(article) {
-  if (!appSettings.filterVerified) return false;
   const verifiedIcon = article.querySelector('svg[data-testid="icon-verified"]');
-  if (verifiedIcon) return true;
   const verifiedAria = article.querySelector('svg[aria-label="Verified account"]');
-  if (verifiedAria) return true;
+  const isVerified = !!(verifiedIcon || verifiedAria);
+
+  if (isVerified) {
+      if (appSettings.filterVerified?.blue) return true;
+  } else {
+      if (appSettings.filterVerified?.non_blue) return true;
+  }
   return false;
 }
 
@@ -371,19 +419,16 @@ function checkCustomKeywords(text) {
   return false;
 }
 
-// 6. Bot Detection (New)
+// 6. Bot Detection
 function checkBotDigits(article, handle) {
     if (!appSettings.filterBot?.digits) return false;
     if (!handle) return false;
-    // Check if handle ends with 5+ digits
     if (/\d{5,}$/.test(handle)) return true;
     return false;
 }
 
 function checkBotDefaultIcon(article) {
     if (!appSettings.filterBot?.defaultIcon) return false;
-    // Look for img with src containing "default_profile_images" or specific structure
-    // Or alt="Image" but generic
     const userAvatar = article.querySelector('div[data-testid="Tweet-User-Avatar"] img');
     if (userAvatar) {
         const src = userAvatar.getAttribute('src') || "";
@@ -394,33 +439,42 @@ function checkBotDefaultIcon(article) {
 
 function checkBotEmoji(article, fullText) {
     if (!appSettings.filterBot?.emoji) return false;
-
-    // Target specific tweet text to avoid username/date counting
     const tweetTextNode = article.querySelector('div[data-testid="tweetText"]');
     const contentText = tweetTextNode ? tweetTextNode.innerText.trim() : "";
-
-    // If we found specific text node, check its length
     if (tweetTextNode) {
         if (contentText.length > 0 && contentText.length <= 3) return true;
-    } else {
-        // Fallback: If no tweetText div found (maybe image only or different structure),
-        // we might skip or be conservative.
-        // If fullText is extremely short (unlikely due to username), we might hide.
-        // But better to rely on tweetText presence for this filter.
     }
-
     return false;
 }
 
 function checkBotLinks(article) {
     if (!appSettings.filterBot?.links) return false;
-
-    // Check external links in tweet text only
     const tweetTextNode = article.querySelector('div[data-testid="tweetText"]');
     const contentText = tweetTextNode ? tweetTextNode.innerText : article.innerText;
-
     if (contentText.match(/https?:\/\/(?!x\.com|twitter\.com)/)) return true;
+    return false;
+}
 
+// 7. Thread Spam Check
+function checkThreadSpam(handle) {
+    if (!appSettings.filterDuplicates) return false;
+    const path = document.body.dataset.linzuMockPath || location.pathname;
+    // Only apply if we are in a thread view
+    if (!path.includes('/status/')) return false;
+    if (!currentThreadOP) return false; // OP not found yet
+    if (!handle) return false;
+
+    // Don't filter OP
+    if (handle === currentThreadOP) return false;
+
+    // Check reply count
+    const count = (threadReplyCounts.get(handle) || 0) + 1;
+    threadReplyCounts.set(handle, count);
+
+    if (count > 1) {
+        // Remove 2nd onwards
+        return true;
+    }
     return false;
 }
 
@@ -430,47 +484,49 @@ function processTweet(article) {
     if (article.dataset.linzuChecked) return;
     article.dataset.linzuChecked = "true";
 
-    const text = article.innerText || "";
     const handle = getUsername(article);
+    const statusId = getStatusId(article);
 
-    // Check Bot Filters First
-    if (checkBotDigits(article, handle)) {
-        removeTweet(article, 'Bot: Digits in ID');
-        return;
-    }
-    if (checkBotDefaultIcon(article)) {
-        removeTweet(article, 'Bot: Default Icon');
-        return;
-    }
-    if (checkBotEmoji(article, text)) {
-        removeTweet(article, 'Bot: Emoji/Short');
-        return;
-    }
-    if (checkBotLinks(article)) {
-        removeTweet(article, 'Bot: External Link');
-        return;
+    // Skip reprocessing same tweet ID (prevents re-render spam count)
+    if (statusId && seenStatusIds.has(statusId)) return;
+
+    // Extract pure text content for duplicate checking
+    const tweetTextNode = article.querySelector('div[data-testid="tweetText"]');
+    const contentText = tweetTextNode ? tweetTextNode.innerText : (article.innerText || "");
+    const text = article.innerText || "";
+
+    const path = document.body.dataset.linzuMockPath || location.pathname;
+
+    // Identify OP if this is the first tweet in a thread view
+    if (path.includes('/status/') && !currentThreadOP && statusId) {
+        const urlStatusIdMatch = path.match(/\/status\/(\d+)/);
+        if (urlStatusIdMatch && urlStatusIdMatch[1] === statusId) {
+            currentThreadOP = handle;
+            console.log('[Linzu] Identified Thread OP:', currentThreadOP);
+            // Don't filter main tweet!
+            return;
+        }
     }
 
-    if (checkLanguage(article)) {
-      removeTweet(article, 'Language Filter');
-      return;
-    }
-    if (checkDuplicate(text)) {
-      removeTweet(article, 'Duplicate');
-      return;
-    }
-    if (checkVerified(article)) {
-      removeTweet(article, 'Verified Account');
-      return;
-    }
-    if (checkContent(article, text)) {
-      removeTweet(article, 'Content Restriction');
-      return;
-    }
-    if (checkCustomKeywords(text)) {
-      removeTweet(article, 'Custom Keyword');
-      return;
-    }
+    // Skip filtering if it's the main tweet (by ID match)
+    const urlStatusIdMatch = path.match(/\/status\/(\d+)/);
+    if (urlStatusIdMatch && urlStatusIdMatch[1] === statusId) return;
+
+    // Check Bot Filters
+    if (checkBotDigits(article, handle)) { removeTweet(article, 'Bot: Digits'); return; }
+    if (checkBotDefaultIcon(article)) { removeTweet(article, 'Bot: Icon'); return; }
+    if (checkBotEmoji(article, contentText)) { removeTweet(article, 'Bot: Emoji'); return; }
+    if (checkBotLinks(article)) { removeTweet(article, 'Bot: Link'); return; }
+
+    if (checkLanguage(article)) { removeTweet(article, 'Language'); return; }
+    if (checkDuplicate(contentText, statusId)) { removeTweet(article, 'Duplicate'); return; }
+    if (checkVerified(article)) { removeTweet(article, 'Verified Filter'); return; }
+    if (checkContent(article, contentText)) { removeTweet(article, 'Content'); return; }
+    if (checkCustomKeywords(contentText)) { removeTweet(article, 'Keyword'); return; }
+
+    // Thread Spam (check last)
+    if (checkThreadSpam(handle)) { removeTweet(article, 'Thread Spam'); return; }
+
   } catch (e) {
     console.error('[Linzu] Error processing tweet:', e);
   }
@@ -502,7 +558,10 @@ function scanNodes(nodes) {
 function resetSession() {
     localRemovedCount = 0;
     sessionDynamicHiddenCount = 0;
-    seenTexts.clear();
+    seenContent.clear();
+    seenStatusIds.clear();
+    threadReplyCounts.clear();
+    currentThreadOP = null;
     lastUrl = location.href;
     updateCounterDisplay();
     console.log('[Linzu] Session reset due to navigation.');
@@ -510,8 +569,6 @@ function resetSession() {
 
 LinzuI18n.init(() => {
   injectFloatingUI();
-
-  // Start Observer only after init
   startObserver();
 });
 
@@ -520,7 +577,6 @@ function startObserver() {
   const observer = new MutationObserver((mutations) => {
     if (!appSettings.isEnabled) return;
 
-    // Check URL change
     if (location.href !== lastUrl) {
         resetSession();
     }
@@ -560,12 +616,6 @@ window.setDynamicSettings = function(settings) {
 
 window.mockNavigation = function(newUrl) {
     history.pushState({}, "", newUrl);
-    // Observer checks location.href which updates.
-    // But MutationObserver only fires on DOM mutation.
-    // If navigation doesn't mutate DOM immediately, reset might lag.
-    // But SPA navigation ALWAYS mutates DOM.
-    // Trigger fake mutation for test?
-    document.body.setAttribute('data-navigated', 'true');
 };
 
 } catch (globalError) {
