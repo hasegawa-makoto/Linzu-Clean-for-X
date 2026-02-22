@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Linzu Clean for X - Settings</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; background: #f5f8fa; color: #14171a; }
+    h1 { font-size: 24px; border-bottom: 2px solid #1da1f2; padding-bottom: 10px; margin-bottom: 20px; }
+    h2 { font-size: 18px; margin-top: 25px; margin-bottom: 15px; color: #657786; }
+    .section { background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 20px; }
+    label { display: block; margin-bottom: 10px; cursor: pointer; }
+    input[type="checkbox"] { margin-right: 10px; }
+    select { padding: 8px; border-radius: 4px; border: 1px solid #ccc; width: 100%; max-width: 300px; }
+    textarea { width: 100%; height: 100px; padding: 10px; border-radius: 4px; border: 1px solid #ccc; font-family: inherit; box-sizing: border-box; }
+    .status { position: fixed; bottom: 20px; right: 20px; background: #17bf63; color: white; padding: 10px 20px; border-radius: 4px; display: none; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+    .desc { font-size: 12px; color: #657786; margin-left: 24px; margin-top: -5px; margin-bottom: 10px; display: block; }
+  </style>
+  <script src="../utils/i18n.js"></script>
+</head>
+<body>
+  <h1 data-i18n="opt_title">Filter Settings</h1>
+
+  <div class="section">
+    <h2 data-i18n="opt_ui_lang">UI Language</h2>
+    <select id="language-select">
+      <option value="ja">日本語</option>
+      <option value="en">English</option>
+    </select>
+  </div>
+
+  <div class="section">
+    <h2 data-i18n="opt_content_lang">Keep Content Language</h2>
+    <select id="filterLanguage">
+      <option value="all" data-i18n="opt_lang_all">All</option>
+      <option value="ja" data-i18n="opt_lang_ja">Japanese Only</option>
+      <option value="en" data-i18n="opt_lang_en">English Only</option>
+    </select>
+  </div>
+
+  <div class="section">
+    <h2 data-i18n="opt_duplicates_title">Remove Duplicates</h2>
+    <label>
+      <input type="checkbox" id="filterDuplicates">
+      <span data-i18n="opt_duplicates_title">Remove Duplicates</span>
+    </label>
+    <span class="desc" data-i18n="opt_duplicates_desc">Hide subsequent posts with identical content.</span>
+  </div>
+
+  <div class="section">
+    <h2 data-i18n="opt_verified_title">Verified Accounts</h2>
+    <label>
+      <input type="checkbox" id="filterVerified">
+      <span data-i18n="opt_verified_desc">Hide posts from Verified (Blue Check) accounts.</span>
+    </label>
+  </div>
+
+  <div class="section">
+    <h2 data-i18n="opt_content_title">Content Restrictions</h2>
+    <label>
+      <input type="checkbox" id="contentImageOnly">
+      <span data-i18n="opt_content_img">Hide Image/Video Only</span>
+    </label>
+    <label>
+      <input type="checkbox" id="contentShortPost">
+      <span data-i18n="opt_content_short">Hide Short Posts</span>
+    </label>
+    <label>
+      <input type="checkbox" id="contentExcessiveLinks">
+      <span data-i18n="opt_content_links">Hide Excessive Links/Tags</span>
+    </label>
+  </div>
+
+  <div class="section">
+    <h2 data-i18n="opt_keywords_title">Custom Keywords</h2>
+    <textarea id="customKeywords" data-i18n-placeholder="opt_keywords_placeholder"></textarea>
+  </div>
+
+  <div id="status" class="status" data-i18n="opt_status_saved">Options saved.</div>
+  <script src="options.js"></script>
+</body>
+</html>
