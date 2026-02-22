@@ -16,6 +16,13 @@ chrome.runtime.onInstalled.addListener(() => {
       shortPost: false,
       excessiveLinks: false
     },
+    // Bot settings
+    filterBot: {
+      digits: false,
+      defaultIcon: false,
+      emoji: false,
+      links: false
+    },
     customKeywords: [],
 
     language: 'ja' // Default UI language

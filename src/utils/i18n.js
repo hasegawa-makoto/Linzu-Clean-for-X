@@ -32,6 +32,12 @@ window.LinzuI18n = {
       opt_content_short: '5文字以下の短文を非表示',
       opt_content_links: '過剰なリンク/ハッシュタグを含む投稿を非表示',
 
+      opt_bot_title: 'ボット(ゾンビ)検知',
+      opt_bot_digits: 'ID末尾が数字5桁以上のアカウント',
+      opt_bot_default_icon: '初期アイコン(画像なし)のアカウント',
+      opt_bot_emoji: '絵文字のみ/3文字以下のリプライ',
+      opt_bot_links: '外部リンク付きのリプライ',
+
       opt_keywords_title: 'カスタムキーワード',
       opt_keywords_placeholder: '非表示にしたい単語を1行に1つ入力してください',
 
@@ -71,6 +77,12 @@ window.LinzuI18n = {
       opt_content_img: 'Hide Image/Video Only Posts',
       opt_content_short: 'Hide Short Posts (<= 5 chars)',
       opt_content_links: 'Hide Posts with Excessive Links/Tags',
+
+      opt_bot_title: 'Bot Detection',
+      opt_bot_digits: 'Hide IDs with 5+ trailing digits',
+      opt_bot_default_icon: 'Hide Default Icon Users',
+      opt_bot_emoji: 'Hide Emoji-only/Short Replies',
+      opt_bot_links: 'Hide Replies with External Links',
 
       opt_keywords_title: 'Custom Keywords',
       opt_keywords_placeholder: 'Enter words to block, one per line',

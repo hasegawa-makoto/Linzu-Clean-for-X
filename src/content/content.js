@@ -16,6 +16,12 @@ let appSettings = {
     shortPost: false,
     excessiveLinks: false
   },
+  filterBot: {
+    digits: false,
+    defaultIcon: false,
+    emoji: false,
+    links: false
+  },
   customKeywords: []
 };
 
@@ -25,8 +31,12 @@ let dynamicSettings = {
   focusUser: ''
 };
 
-// Counters
+// Counters (Session Only)
+let localRemovedCount = 0;
 let sessionDynamicHiddenCount = 0;
+
+// URL Tracking for reset
+let lastUrl = location.href;
 
 // Seen texts for duplicate detection (TextHash -> Count)
 const seenTexts = new Set();
@@ -56,7 +66,7 @@ function updateCounterDisplay() {
   try {
     const countDisplay = document.getElementById('linzu-count');
     if (countDisplay) {
-      const total = (appSettings.removedCount || 0) + sessionDynamicHiddenCount;
+      const total = localRemovedCount + sessionDynamicHiddenCount;
       countDisplay.textContent = total;
     }
   } catch (e) {
@@ -97,7 +107,6 @@ function injectFloatingUI() {
     `;
 
     if (!document.body) {
-        // Should not happen with run_at: document_idle
         console.warn('[Linzu] document.body not ready');
         return;
     }
@@ -122,7 +131,7 @@ function injectFloatingUI() {
       chrome.storage.local.set({ isEnabled: isEnabled });
 
       if (!isEnabled) {
-         applyDynamicFilters(); // Logic inside handles disabled state
+         applyDynamicFilters();
       } else {
          const articles = document.querySelectorAll('article[data-testid="tweet"]');
          scanNodes(articles);
@@ -159,14 +168,12 @@ function injectFloatingUI() {
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area === 'local') {
         if (changes.isEnabled) appSettings.isEnabled = changes.isEnabled.newValue;
-        if (changes.removedCount) {
-          appSettings.removedCount = changes.removedCount.newValue;
-          updateCounterDisplay();
-        }
+        // removedCount from storage ignored for display (using local)
         if (changes.filterDuplicates) appSettings.filterDuplicates = changes.filterDuplicates.newValue;
         if (changes.filterVerified) appSettings.filterVerified = changes.filterVerified.newValue;
         if (changes.filterLanguage) appSettings.filterLanguage = changes.filterLanguage.newValue;
         if (changes.filterContent) appSettings.filterContent = changes.filterContent.newValue;
+        if (changes.filterBot) appSettings.filterBot = changes.filterBot.newValue;
         if (changes.customKeywords) appSettings.customKeywords = changes.customKeywords.newValue;
 
         if (changes.language) {
@@ -215,7 +222,6 @@ function getUsername(article) {
     const match = text.match(/@([a-zA-Z0-9_]+)/);
     if (match) return match[1];
   } catch (e) {
-    // Ignore parsing errors for single tweets
   }
   return null;
 }
@@ -224,11 +230,9 @@ function applyDynamicFilters() {
   try {
     const articles = document.querySelectorAll('article[data-testid="tweet"]');
 
-    // Reset dynamic count before recounting
     sessionDynamicHiddenCount = 0;
 
     if (!appSettings.isEnabled) {
-        // Restore all dynamic hidden items
         articles.forEach(article => {
             if (article.dataset.linzuDynamicHidden) {
                 article.style.display = '';
@@ -239,11 +243,9 @@ function applyDynamicFilters() {
         return;
     }
 
-    // Determine current profile owner if on a profile page
     let currentProfileOwner = null;
 
     try {
-        // Mock support
         if (document.body.dataset.linzuMockOwner) {
             currentProfileOwner = document.body.dataset.linzuMockOwner;
         } else {
@@ -255,12 +257,9 @@ function applyDynamicFilters() {
                 }
             }
         }
-    } catch(e) {
-        // location parsing error
-    }
+    } catch(e) {}
 
     articles.forEach(article => {
-      // If permanently hidden by static rules, skip
       if (article.dataset.linzuHidden === "true") return;
 
       let shouldHide = false;
@@ -280,13 +279,11 @@ function applyDynamicFilters() {
           }
       }
 
-      // Apply visibility
       if (shouldHide) {
           article.style.display = 'none';
           article.dataset.linzuDynamicHidden = "true";
           sessionDynamicHiddenCount++;
       } else {
-          // Only unhide if it was hidden by dynamic filter (has the flag)
           if (article.dataset.linzuDynamicHidden) {
               article.style.display = '';
               delete article.dataset.linzuDynamicHidden;
@@ -304,16 +301,15 @@ function applyDynamicFilters() {
 // --- Filtering Logic (Permanent) ---
 
 function removeTweet(article, reason) {
-  if (article.style.display === 'none') return;
+  if (article.style.display === 'none' || article.dataset.linzuHidden === "true") return;
 
   article.style.display = 'none';
   article.dataset.linzuHidden = "true";
 
   console.log(`[Linzu Clean] Removed (${reason}):`, article.innerText.substring(0, 30));
 
-  // Update counter
-  const newCount = (appSettings.removedCount || 0) + 1;
-  chrome.storage.local.set({ removedCount: newCount });
+  localRemovedCount++;
+  updateCounterDisplay();
 }
 
 // 1. Duplicate Check
@@ -375,12 +371,85 @@ function checkCustomKeywords(text) {
   return false;
 }
 
+// 6. Bot Detection (New)
+function checkBotDigits(article, handle) {
+    if (!appSettings.filterBot?.digits) return false;
+    if (!handle) return false;
+    // Check if handle ends with 5+ digits
+    if (/\d{5,}$/.test(handle)) return true;
+    return false;
+}
+
+function checkBotDefaultIcon(article) {
+    if (!appSettings.filterBot?.defaultIcon) return false;
+    // Look for img with src containing "default_profile_images" or specific structure
+    // Or alt="Image" but generic
+    const userAvatar = article.querySelector('div[data-testid="Tweet-User-Avatar"] img');
+    if (userAvatar) {
+        const src = userAvatar.getAttribute('src') || "";
+        if (src.includes('default_profile_images')) return true;
+    }
+    return false;
+}
+
+function checkBotEmoji(article, fullText) {
+    if (!appSettings.filterBot?.emoji) return false;
+
+    // Target specific tweet text to avoid username/date counting
+    const tweetTextNode = article.querySelector('div[data-testid="tweetText"]');
+    const contentText = tweetTextNode ? tweetTextNode.innerText.trim() : "";
+
+    // If we found specific text node, check its length
+    if (tweetTextNode) {
+        if (contentText.length > 0 && contentText.length <= 3) return true;
+    } else {
+        // Fallback: If no tweetText div found (maybe image only or different structure),
+        // we might skip or be conservative.
+        // If fullText is extremely short (unlikely due to username), we might hide.
+        // But better to rely on tweetText presence for this filter.
+    }
+
+    return false;
+}
+
+function checkBotLinks(article) {
+    if (!appSettings.filterBot?.links) return false;
+
+    // Check external links in tweet text only
+    const tweetTextNode = article.querySelector('div[data-testid="tweetText"]');
+    const contentText = tweetTextNode ? tweetTextNode.innerText : article.innerText;
+
+    if (contentText.match(/https?:\/\/(?!x\.com|twitter\.com)/)) return true;
+
+    return false;
+}
+
+
 function processTweet(article) {
   try {
     if (article.dataset.linzuChecked) return;
     article.dataset.linzuChecked = "true";
 
     const text = article.innerText || "";
+    const handle = getUsername(article);
+
+    // Check Bot Filters First
+    if (checkBotDigits(article, handle)) {
+        removeTweet(article, 'Bot: Digits in ID');
+        return;
+    }
+    if (checkBotDefaultIcon(article)) {
+        removeTweet(article, 'Bot: Default Icon');
+        return;
+    }
+    if (checkBotEmoji(article, text)) {
+        removeTweet(article, 'Bot: Emoji/Short');
+        return;
+    }
+    if (checkBotLinks(article)) {
+        removeTweet(article, 'Bot: External Link');
+        return;
+    }
 
     if (checkLanguage(article)) {
       removeTweet(article, 'Language Filter');
@@ -409,19 +478,15 @@ function processTweet(article) {
 
 function scanNodes(nodes) {
   try {
-    // Only process Element nodes
     const elements = Array.from(nodes).filter(node => node.nodeType === 1);
 
     elements.forEach(node => {
-        // Prevent observing our own UI
         if (node.id === 'linzu-floating-ui' || node.classList.contains('linzu-ignore')) return;
 
-        // Check if node itself is tweet
         if (node.tagName === 'ARTICLE' && node.getAttribute('data-testid') === 'tweet') {
             processTweet(node);
         }
 
-        // Find tweets inside node
         if (node.querySelectorAll) {
             const articles = node.querySelectorAll('article[data-testid="tweet"]');
             articles.forEach(processTweet);
@@ -433,7 +498,16 @@ function scanNodes(nodes) {
   }
 }
 
-// Initialize I18n then inject UI
+// Reset logic
+function resetSession() {
+    localRemovedCount = 0;
+    sessionDynamicHiddenCount = 0;
+    seenTexts.clear();
+    lastUrl = location.href;
+    updateCounterDisplay();
+    console.log('[Linzu] Session reset due to navigation.');
+}
+
 LinzuI18n.init(() => {
   injectFloatingUI();
 
@@ -446,9 +520,13 @@ function startObserver() {
   const observer = new MutationObserver((mutations) => {
     if (!appSettings.isEnabled) return;
 
+    // Check URL change
+    if (location.href !== lastUrl) {
+        resetSession();
+    }
+
     const addedNodes = [];
     mutations.forEach(mutation => {
-      // Safety check to ignore mutations inside our UI
       if (mutation.target.id === 'linzu-floating-ui' || mutation.target.closest('#linzu-floating-ui')) {
           return;
       }
@@ -478,6 +556,16 @@ function startObserver() {
 window.setDynamicSettings = function(settings) {
     dynamicSettings = { ...dynamicSettings, ...settings };
     applyDynamicFilters();
+};
+
+window.mockNavigation = function(newUrl) {
+    history.pushState({}, "", newUrl);
+    // Observer checks location.href which updates.
+    // But MutationObserver only fires on DOM mutation.
+    // If navigation doesn't mutate DOM immediately, reset might lag.
+    // But SPA navigation ALWAYS mutates DOM.
+    // Trigger fake mutation for test?
+    document.body.setAttribute('data-navigated', 'true');
 };
 
 } catch (globalError) {

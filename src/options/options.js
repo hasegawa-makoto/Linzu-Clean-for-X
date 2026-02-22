@@ -5,11 +5,25 @@ const defaultContent = {
   excessiveLinks: false
 };
 
+const defaultBot = {
+  digits: false,
+  defaultIcon: false,
+  emoji: false,
+  links: false
+};
+
 function saveOptions() {
   const filterContent = {
     imageOnly: document.getElementById('contentImageOnly').checked,
     shortPost: document.getElementById('contentShortPost').checked,
     excessiveLinks: document.getElementById('contentExcessiveLinks').checked
+  };
+
+  const filterBot = {
+    digits: document.getElementById('botDigits').checked,
+    defaultIcon: document.getElementById('botDefaultIcon').checked,
+    emoji: document.getElementById('botEmoji').checked,
+    links: document.getElementById('botLinks').checked
   };
 
   const filterDuplicates = document.getElementById('filterDuplicates').checked;
@@ -22,6 +36,7 @@ function saveOptions() {
 
   chrome.storage.local.set({
     filterContent: filterContent,
+    filterBot: filterBot,
     filterDuplicates: filterDuplicates,
     filterVerified: filterVerified,
     filterLanguage: filterLanguage,
@@ -47,6 +62,7 @@ function restoreOptions() {
     'filterVerified',
     'filterLanguage',
     'filterContent',
+    'filterBot',
     'customKeywords'
   ], (result) => {
 
@@ -66,6 +82,12 @@ function restoreOptions() {
     document.getElementById('contentImageOnly').checked = content.imageOnly || false;
     document.getElementById('contentShortPost').checked = content.shortPost || false;
     document.getElementById('contentExcessiveLinks').checked = content.excessiveLinks || false;
+
+    const bot = result.filterBot || defaultBot;
+    document.getElementById('botDigits').checked = bot.digits || false;
+    document.getElementById('botDefaultIcon').checked = bot.defaultIcon || false;
+    document.getElementById('botEmoji').checked = bot.emoji || false;
+    document.getElementById('botLinks').checked = bot.links || false;
 
     const keywords = result.customKeywords || [];
     document.getElementById('customKeywords').value = keywords.join('\n');
