@@ -8,6 +8,7 @@ try {
 let appSettings = {
   isEnabled: true,
   removedCount: 0,
+  isMinimized: false,
   filterDuplicates: false,
   filterVerified: { blue: false, non_blue: false },
   filterLanguage: 'all', // 'all', 'ja', 'en'
@@ -91,6 +92,7 @@ function injectFloatingUI() {
     uiContainer.innerHTML = `
       <div class="linzu-header">
         <span class="linzu-title">${LinzuI18n.t('appTitle')}</span>
+        <button class="linzu-minimize-btn" id="linzu-minimize" title="Minimize">_</button>
         <label class="linzu-switch">
           <input type="checkbox" id="linzu-toggle">
           <span class="linzu-slider round"></span>
@@ -125,10 +127,15 @@ function injectFloatingUI() {
     const ownerCheckbox = document.getElementById('linzu-owner');
     const searchInput = document.getElementById('linzu-search');
     const settingsBtn = document.querySelector('.linzu-settings-btn');
+    const minimizeBtn = document.getElementById('linzu-minimize');
 
     // Load initial state (Storage)
     loadSettings(() => {
       toggle.checked = appSettings.isEnabled;
+      // Apply minimized state
+      if (appSettings.isMinimized) {
+          uiContainer.classList.add('linzu-minimized');
+      }
       updateCounterDisplay();
     });
 
@@ -144,6 +151,34 @@ function injectFloatingUI() {
          scanNodes(articles);
          applyDynamicFilters();
       }
+    });
+
+    // Minimize Button Listener
+    minimizeBtn.addEventListener('click', (e) => {
+        e.stopPropagation(); // Prevent triggering container click
+        appSettings.isMinimized = true;
+        uiContainer.classList.add('linzu-minimized');
+        chrome.storage.local.set({ isMinimized: true });
+    });
+
+    // Expand Listener (Click on container when minimized)
+    uiContainer.addEventListener('click', (e) => {
+        if (uiContainer.classList.contains('linzu-minimized')) {
+            appSettings.isMinimized = false;
+            uiContainer.classList.remove('linzu-minimized');
+            chrome.storage.local.set({ isMinimized: false });
+        }
+    });
+
+    // Prevent container click logic from interfering with controls when Expanded
+    // Stop propagation on interactive elements
+    const interactiveElements = uiContainer.querySelectorAll('input, button, a, label');
+    interactiveElements.forEach(el => {
+        if (el.id !== 'linzu-minimize') { // Minimize button is handled separately
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+            });
+        }
     });
 
     // Dynamic Controls Listeners (Direct)
@@ -175,6 +210,18 @@ function injectFloatingUI() {
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area === 'local') {
         if (changes.isEnabled) appSettings.isEnabled = changes.isEnabled.newValue;
+        if (changes.isMinimized) {
+            appSettings.isMinimized = changes.isMinimized.newValue;
+            if (appSettings.isMinimized) {
+                uiContainer.classList.add('linzu-minimized');
+            } else {
+                uiContainer.classList.remove('linzu-minimized');
+            }
+        }
+        if (changes.removedCount) {
+          appSettings.removedCount = changes.removedCount.newValue;
+          updateCounterDisplay();
+        }
         if (changes.filterDuplicates) appSettings.filterDuplicates = changes.filterDuplicates.newValue;
         if (changes.filterVerified) appSettings.filterVerified = changes.filterVerified.newValue;
         if (changes.filterLanguage) appSettings.filterLanguage = changes.filterLanguage.newValue;
@@ -247,25 +294,6 @@ function getStatusId(article) {
 }
 
 function isMainTweet(article) {
-    // Determine if this is the main tweet in a detail view.
-    // Usually it doesn't have a "Replying to" header context above it within the same cell logic?
-    // Hard to detect structurally reliably.
-    // However, in conversation view, the main tweet is usually focused.
-    // A heuristic: check if it contains the conversation thread line? No.
-    // Or check tabindex. Main tweet often has tabindex="-1" on some inner div or is the target of navigation.
-
-    // Better heuristic: It usually appears alone or at top without "Show this thread".
-    // Let's rely on aria-labelledby="detail-header" if parent has it? No.
-
-    // For now, let's assume we can't easily detect Main Tweet structurally without more research.
-    // BUT, we can detect if it's the *first* tweet processed in a new /status/ URL load?
-    // Or we can check if it is the "Conversation" owner?
-
-    // Let's check `data-testid="tweet"` parent structure.
-    // Main tweet often lacks the social context header unless it's a thread.
-
-    // For this implementation, we will skip "Thread Spam Logic" on the FIRST tweet we see in a thread view?
-    // We already track `currentThreadOP`.
     return false; // Placeholder
 }
 
@@ -334,10 +362,6 @@ function applyDynamicFilters() {
 // --- Filtering Logic (Permanent) ---
 
 function removeTweet(article, reason) {
-  // Main Tweet Exception
-  // If we can identify main tweet, return.
-  // For now, if currentThreadOP matches and it's the first time seeing it?
-
   if (article.style.display === 'none' || article.dataset.linzuHidden === "true") return;
 
   article.style.display = 'none';

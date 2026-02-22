@@ -13,6 +13,46 @@
   border: 1px solid #38444d;
   max-height: 80vh;
   overflow-y: auto;
+  transition: width 0.3s ease, height 0.3s ease, padding 0.3s ease, opacity 0.3s ease;
+}
+
+#linzu-floating-ui.linzu-minimized {
+  width: 120px;
+  height: 40px; /* Compact height */
+  overflow: hidden;
+  padding: 8px 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+#linzu-floating-ui.linzu-minimized .linzu-controls,
+#linzu-floating-ui.linzu-minimized .linzu-footer,
+#linzu-floating-ui.linzu-minimized .linzu-switch {
+  display: none;
+}
+
+#linzu-floating-ui.linzu-minimized .linzu-header {
+  margin-bottom: 0;
+  border-bottom: none;
+  padding-bottom: 0;
+  width: 100%;
+}
+
+#linzu-floating-ui.linzu-minimized .linzu-title {
+  font-size: 12px;
+}
+
+#linzu-floating-ui.linzu-minimized .linzu-stats {
+  margin-bottom: 0;
+  font-size: 12px;
+  margin-left: auto; /* Push to right */
+}
+
+/* Hide stats label in minimized to save space, just show number? */
+#linzu-floating-ui.linzu-minimized .linzu-stats-label {
+  display: none;
 }
 
 .linzu-header {
@@ -28,6 +68,27 @@
   font-weight: bold;
   font-size: 14px;
   color: #1da1f2;
+}
+
+.linzu-minimize-btn {
+  background: none;
+  border: none;
+  color: #8899a6;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 5px;
+  line-height: 1;
+  margin-left: auto;
+  margin-right: 10px;
+}
+
+.linzu-minimize-btn:hover {
+  color: #1da1f2;
+}
+
+/* Hide minimize button when minimized (whole UI is expand button) */
+#linzu-floating-ui.linzu-minimized .linzu-minimize-btn {
+  display: none;
 }
 
 .linzu-stats {

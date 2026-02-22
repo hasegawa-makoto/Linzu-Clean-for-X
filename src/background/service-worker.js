@@ -6,6 +6,7 @@ chrome.runtime.onInstalled.addListener(() => {
   chrome.storage.local.set({
     isEnabled: true,
     removedCount: 0,
+    isMinimized: false, // New: UI state
     filters: {}, // Cleared legacy filters
     // Rule-based settings defaults
     filterDuplicates: false,
