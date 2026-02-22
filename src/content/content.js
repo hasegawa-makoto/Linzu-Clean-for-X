@@ -151,7 +151,9 @@ function injectFloatingUI() {
       if (!isEnabled) {
          if (observer) observer.disconnect();
          restoreAllVisibility();
-         console.log('[Linzu] Extension Disabled. Filters cleared.');
+         resetSession(); // Reset all counters and tracking
+         chrome.storage.local.set({ removedCount: 0 }); // Reset storage count
+         console.log('[Linzu] Extension Disabled. Filters cleared and reset.');
       } else {
          // Re-enable
          startObserver();
