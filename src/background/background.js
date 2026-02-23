@@ -13,7 +13,12 @@ chrome.runtime.onInstalled.addListener((details) => {
         removedCount: 0,
         isMinimized: false,
         language: 'ja',
-        filterDuplicates: true,
+        // Split Duplicates into two settings
+        filterDuplicateContent: true, // New default
+        filterUserSpam: true,         // New default
+        // Legacy support: map old filterDuplicates if exists?
+        // filterDuplicates: true, (Removed from defaults, but kept for migration logic if needed)
+
         filterUnverified: false,
         filterLanguage: 'all',
         filterContent: {

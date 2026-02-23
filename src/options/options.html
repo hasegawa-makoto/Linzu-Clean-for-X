@@ -45,9 +45,14 @@
       </div>
 
       <div class="checkbox-group" style="margin-top:10px;">
+        <!-- Split Duplicates -->
         <label>
-          <input type="checkbox" id="filter-duplicates"> <span data-i18n="opt_duplicates_title">Remove Duplicates</span>
+          <input type="checkbox" id="filter-duplicate-content"> <span data-i18n="opt_duplicate_content">Content: Hide identical text (Keep oldest)</span>
         </label>
+        <label>
+          <input type="checkbox" id="filter-user-spam"> <span data-i18n="opt_user_spam">User Spam: Hide 2nd+ reply from same user</span>
+        </label>
+
         <label>
           <input type="checkbox" id="filter-unverified"> <span data-i18n="opt_unverified_title">Hide Unverified Accounts</span>
         </label>

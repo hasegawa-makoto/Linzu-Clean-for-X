@@ -16,7 +16,10 @@ let appSettings = {
   isEnabled: true,
   removedCount: 0,
   isMinimized: false,
-  filterDuplicates: false,
+  // New split duplicate settings
+  filterDuplicateContent: true,
+  filterUserSpam: true,
+
   filterUnverified: false,
   filterLanguage: 'all', // 'all', 'ja', 'en'
   filterContent: {
@@ -55,8 +58,10 @@ const seenContent = new Map();
 const seenStatusIds = new Set();
 const MAX_CACHE_SIZE = 500;
 
-// Thread Spam Tracking
-let threadLastSpeaker = null;
+// Thread User Frequency Map (Handle -> Count) for User Spam
+const threadUserCounts = new Map();
+
+// Thread OP Tracking
 let currentThreadOP = null;
 
 // Debounce Timer for Dynamic Filters
@@ -252,7 +257,9 @@ function injectFloatingUI() {
           updateCounterDisplay();
         }
         // Update local state for other settings
-        if (changes.filterDuplicates) appSettings.filterDuplicates = changes.filterDuplicates.newValue;
+        if (changes.filterDuplicateContent !== undefined) appSettings.filterDuplicateContent = changes.filterDuplicateContent.newValue;
+        if (changes.filterUserSpam !== undefined) appSettings.filterUserSpam = changes.filterUserSpam.newValue;
+
         if (changes.filterUnverified) appSettings.filterUnverified = changes.filterUnverified.newValue;
         if (changes.filterLanguage) appSettings.filterLanguage = changes.filterLanguage.newValue;
         if (changes.filterContent) appSettings.filterContent = changes.filterContent.newValue;
@@ -273,10 +280,10 @@ function injectFloatingUI() {
 function loadSettings(callback) {
   chrome.storage.local.get(null, (result) => {
     appSettings = { ...appSettings, ...result };
-    if (result.filterUnverified === undefined) {
-        if (result.filterVerified && typeof result.filterVerified === 'object') {
-            appSettings.filterUnverified = result.filterVerified.non_blue;
-        }
+    // Backward compatibility if older version data exists
+    if (result.filterDuplicateContent === undefined && result.filterDuplicates !== undefined) {
+        appSettings.filterDuplicateContent = result.filterDuplicates;
+        appSettings.filterUserSpam = result.filterDuplicates;
     }
     if (callback) callback();
   });
@@ -357,8 +364,6 @@ function applyDynamicFilters() {
 
     // License Check for Dynamic Filters
     if (appSettings.licenseStatus !== 'active') {
-         // Force reveal if not active? Or just don't apply?
-         // Let's just return to disable dynamic filters
          return;
     }
 
@@ -420,8 +425,8 @@ function removeTweet(article) {
   updateCounterDisplay();
 }
 
-// 1. Duplicate Check
-function checkDuplicate(text, statusId) {
+// 1. Content Duplicate Check
+function checkContentDuplicate(text, statusId) {
   if (!text || text.length < 5) return false;
   if (!statusId) return false;
 
@@ -441,7 +446,26 @@ function checkDuplicate(text, statusId) {
   return false;
 }
 
-// 2. Language Check
+// 2. User Spam Check (Frequency in Thread)
+function checkUserSpam(handle) {
+    if (!handle) return false;
+
+    // Only apply if we are in a thread view (OP detected)
+    // Actually, OP detection happens in processTweet.
+    // We should allow OP freely.
+    if (currentThreadOP && handle === currentThreadOP) return false;
+
+    // Increment count
+    const count = (threadUserCounts.get(handle) || 0) + 1;
+    threadUserCounts.set(handle, count);
+
+    // Hide if 2nd or more
+    if (count > 1) return true;
+
+    return false;
+}
+
+// 3. Language Check
 function checkLanguage(article) {
   const langDiv = article.querySelector('div[lang]');
   if (!langDiv) return false;
@@ -452,7 +476,7 @@ function checkLanguage(article) {
   return false;
 }
 
-// 3. Content Check
+// 4. Content Check
 function checkContent(article, text, handle) {
   const isOP = currentThreadOP && handle === currentThreadOP;
 
@@ -477,7 +501,7 @@ function checkContent(article, text, handle) {
   return false;
 }
 
-// 4. Verified Account Check
+// 5. Verified Account Check
 function checkUnverified(article) {
   const userNameDiv = article.querySelector('[data-testid="User-Name"]');
   if (!userNameDiv) return false;
@@ -486,7 +510,7 @@ function checkUnverified(article) {
   return false;
 }
 
-// 5. Custom Keywords
+// 6. Custom Keywords
 function checkCustomKeywords(text) {
   for (const keyword of appSettings.customKeywords) {
     if (text.includes(keyword)) return true;
@@ -494,7 +518,7 @@ function checkCustomKeywords(text) {
   return false;
 }
 
-// 6. Bot Detection
+// 7. Bot Detection
 function checkBotDigits(handle) {
     if (!handle) return false;
     if (REGEX_DIGITS_5.test(handle)) return true;
@@ -526,24 +550,6 @@ function checkBotLinks(article) {
     return false;
 }
 
-// 7. Thread Spam Check
-function checkThreadSpam(handle) {
-    const path = document.body.dataset.linzuMockPath || location.pathname;
-    if (!path.includes('/status/')) return false;
-    if (!currentThreadOP) return false;
-    if (!handle) return false;
-
-    if (handle === currentThreadOP) {
-        threadLastSpeaker = handle;
-        return false;
-    }
-
-    if (handle === threadLastSpeaker) return true;
-
-    threadLastSpeaker = handle;
-    return false;
-}
-
 
 function processTweet(article) {
   try {
@@ -561,8 +567,6 @@ function processTweet(article) {
     // 2. Absolute Privilege (Owner)
     const currentProfileOwner = getCurrentProfileOwner();
     if (currentProfileOwner && handle === currentProfileOwner) return;
-
-    // 3. Skip reprocessing logic if no ID found or ID already hidden
 
     // Pre-calculations
     const tweetTextNode = article.querySelector('div[data-testid="tweetText"]');
@@ -590,7 +594,11 @@ function processTweet(article) {
     if (appSettings.filterBot?.links && checkBotLinks(article)) { removeTweet(article); return; }
 
     if (appSettings.filterLanguage !== 'all' && checkLanguage(article)) { removeTweet(article); return; }
-    if (appSettings.filterDuplicates && checkDuplicate(contentText, statusId)) { removeTweet(article); return; }
+
+    // Split Duplicate Checks
+    if (appSettings.filterDuplicateContent && checkContentDuplicate(contentText, statusId)) { removeTweet(article); return; }
+    if (appSettings.filterUserSpam && checkUserSpam(handle)) { removeTweet(article); return; }
+
     if (appSettings.filterUnverified && checkUnverified(article)) { removeTweet(article); return; }
 
     if (appSettings.filterContent && (appSettings.filterContent.imageOnly || appSettings.filterContent.shortPost || appSettings.filterContent.excessiveLinks)) {
@@ -598,8 +606,6 @@ function processTweet(article) {
     }
 
     if (appSettings.customKeywords?.length > 0 && checkCustomKeywords(contentText)) { removeTweet(article); return; }
-
-    if (appSettings.filterDuplicates && checkThreadSpam(handle)) { removeTweet(article); return; }
 
   } catch (e) {}
 }
@@ -629,6 +635,7 @@ function resetSession() {
     sessionDynamicHiddenCount = 0;
     seenContent.clear();
     seenStatusIds.clear();
+    threadUserCounts.clear(); // Reset thread frequency
     threadLastSpeaker = null;
     currentThreadOP = null;
     lastUrl = location.href;
@@ -642,8 +649,13 @@ function restoreAllVisibility() {
         delete article.dataset.linzuHidden;
         delete article.dataset.linzuDynamicHidden;
         delete article.dataset.linzuProcessed;
-        delete article.dataset.linzuChecked; // Legacy cleanup
+        delete article.dataset.linzuChecked;
     });
+    // When resetting visibility (e.g., toggle OFF/ON), clear tracking for fair re-eval
+    seenContent.clear();
+    seenStatusIds.clear();
+    threadUserCounts.clear();
+
     updateCounterDisplay();
 }
 
@@ -651,7 +663,6 @@ LinzuI18n.init(() => {
   loadSettings(() => {
       injectFloatingUI();
       startObserver();
-      // Initial scan of existing content
       const existingArticles = document.querySelectorAll('article[data-testid="tweet"]');
       if (existingArticles.length > 0) {
           scanNodes(existingArticles);

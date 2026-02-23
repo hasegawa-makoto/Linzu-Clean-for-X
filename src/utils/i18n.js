@@ -31,8 +31,8 @@ window.LinzuI18n = {
       opt_lang_ja: '日本語のみ',
       opt_lang_en: '英語のみ',
 
-      opt_duplicates_title: '重複投稿の排除',
-      opt_duplicates_desc: '同じ内容の投稿が2回目以降表示された場合に非表示にする',
+      opt_duplicate_content: '【内容重複】同じテキストの投稿を非表示 (最古以外)',
+      opt_user_spam: '【ユーザー連投】同じ人の複数回リプライを非表示 (2回目以降)',
 
       opt_verified_title: 'アカウント認証フィルター',
       opt_unverified_title: '未認証アカウント(青バッジなし)を非表示',
@@ -89,8 +89,8 @@ window.LinzuI18n = {
       opt_lang_ja: 'Japanese Only',
       opt_lang_en: 'English Only',
 
-      opt_duplicates_title: 'Remove Duplicates',
-      opt_duplicates_desc: 'Hide subsequent posts with identical content within the session.',
+      opt_duplicate_content: 'Content: Hide identical text (Keep oldest)',
+      opt_user_spam: 'User Spam: Hide 2nd+ reply from same user',
 
       opt_verified_title: 'Verified Account Filter',
       opt_unverified_title: 'Hide Unverified (No Blue Check) Accounts',

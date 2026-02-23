@@ -8,7 +8,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Checkboxes & Selects
     const filterLanguageSelect = document.getElementById('filter-language');
-    const filterDuplicates = document.getElementById('filter-duplicates');
+    // New Duplicate Checkboxes
+    const filterDuplicateContent = document.getElementById('filter-duplicate-content');
+    const filterUserSpam = document.getElementById('filter-user-spam');
+
     const filterUnverified = document.getElementById('filter-unverified');
 
     const contentImageOnly = document.getElementById('content-image-only');
@@ -77,7 +80,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Filters
             if (filterLanguageSelect) filterLanguageSelect.value = items.filterLanguage || 'all';
-            if (filterDuplicates) filterDuplicates.checked = items.filterDuplicates || false;
+
+            // New Duplicate Logic
+            if (filterDuplicateContent) filterDuplicateContent.checked = items.filterDuplicateContent !== undefined ? items.filterDuplicateContent : true;
+            if (filterUserSpam) filterUserSpam.checked = items.filterUserSpam !== undefined ? items.filterUserSpam : true;
+
             if (filterUnverified) filterUnverified.checked = items.filterUnverified || false;
 
             if (items.filterContent) {
@@ -150,7 +157,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const settings = {
                 language: uiLanguageSelect.value, // Save UI language
                 filterLanguage: filterLanguageSelect ? filterLanguageSelect.value : 'all',
-                filterDuplicates: filterDuplicates ? filterDuplicates.checked : false,
+
+                // New Duplicate Settings
+                filterDuplicateContent: filterDuplicateContent ? filterDuplicateContent.checked : false,
+                filterUserSpam: filterUserSpam ? filterUserSpam.checked : false,
+
                 filterUnverified: filterUnverified ? filterUnverified.checked : false,
                 filterContent: {
                     imageOnly: contentImageOnly ? contentImageOnly.checked : false,
