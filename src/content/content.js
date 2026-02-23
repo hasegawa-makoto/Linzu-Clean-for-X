@@ -450,6 +450,11 @@ function checkContentDuplicate(text, statusId) {
 function checkUserSpam(handle) {
     if (!handle) return false;
 
+    // SCOPE LIMITATION: Only run in Thread View (/status/)
+    const path = window.LINZU_MOCK_PATH || document.body.dataset.linzuMockPath || location.pathname;
+    // console.log(`[Linzu Debug] checkUserSpam handle=${handle} path=${path}`);
+    if (!path.includes('/status/')) return false;
+
     // Only apply if we are in a thread view (OP detected)
     // Actually, OP detection happens in processTweet.
     // We should allow OP freely.
@@ -572,7 +577,7 @@ function processTweet(article) {
     const tweetTextNode = article.querySelector('div[data-testid="tweetText"]');
     const contentText = tweetTextNode ? tweetTextNode.innerText : (article.innerText || "");
 
-    const path = document.body.dataset.linzuMockPath || location.pathname;
+    const path = window.LINZU_MOCK_PATH || document.body.dataset.linzuMockPath || location.pathname;
 
     // Identify OP (Thread view)
     if (path.includes('/status/') && !currentThreadOP && statusId) {
