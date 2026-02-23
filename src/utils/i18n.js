@@ -23,6 +23,9 @@ window.LinzuI18n = {
       opt_license_title: 'Proライセンス',
       opt_license_desc: '全機能を利用するにはライセンスキーを入力してください。',
       opt_activate: '認証する',
+      opt_deactivate: '認証解除',
+      opt_license_active: 'PROライセンス有効',
+      opt_license_inactive: '未認証 (機能制限中)',
 
       opt_lang_all: 'すべて',
       opt_lang_ja: '日本語のみ',
@@ -36,7 +39,7 @@ window.LinzuI18n = {
       opt_general_title: '一般設定',
 
       opt_content_title: 'コンテンツ制限',
-      opt_content_img: '画像/動画のみの投稿を非表示',
+      opt_content_img: '画像/動画のみの投稿を非表示 (投稿主は除く)',
       opt_content_short: '5文字以下の短文を非表示',
       opt_content_links: '過剰なリンク/ハッシュタグを含む投稿を非表示',
 
@@ -78,6 +81,9 @@ window.LinzuI18n = {
       opt_license_title: 'Pro License',
       opt_license_desc: 'Enter your license key to unlock full features.',
       opt_activate: 'Activate',
+      opt_deactivate: 'Deactivate',
+      opt_license_active: 'PRO License Active',
+      opt_license_inactive: 'Unlicensed (Limited Mode)',
 
       opt_lang_all: 'All',
       opt_lang_ja: 'Japanese Only',
@@ -91,7 +97,7 @@ window.LinzuI18n = {
       opt_general_title: 'General Settings',
 
       opt_content_title: 'Content Restrictions',
-      opt_content_img: 'Hide Image/Video Only Posts',
+      opt_content_img: 'Hide Image/Video Only Posts (Excludes OP)',
       opt_content_short: 'Hide Short Posts (<= 5 chars)',
       opt_content_links: 'Hide Posts with Excessive Links/Tags',
 

@@ -12,6 +12,15 @@
   <div class="container">
     <h1 data-i18n="opt_title">Linzu Clean Settings</h1>
 
+    <!-- UI Language Selector -->
+    <div class="language-selector" style="text-align:right; margin-bottom:10px;">
+        <label for="ui-language" data-i18n="opt_ui_lang">UI Language:</label>
+        <select id="ui-language">
+            <option value="ja">日本語</option>
+            <option value="en">English</option>
+        </select>
+    </div>
+
     <!-- License Section -->
     <div class="section license-box">
         <h2 data-i18n="opt_license_title">Pro License</h2>
@@ -24,7 +33,18 @@
     <!-- General Settings -->
     <div class="section">
       <h2 data-i18n="opt_general_title">General</h2>
-      <div class="checkbox-group">
+
+      <!-- Content Language Filter -->
+      <div class="control-group">
+          <label data-i18n="opt_content_lang" style="font-weight:bold; display:block; margin-bottom:5px;">Keep Content Language:</label>
+          <select id="filter-language">
+              <option value="all" data-i18n="opt_lang_all">All</option>
+              <option value="ja" data-i18n="opt_lang_ja">Japanese Only</option>
+              <option value="en" data-i18n="opt_lang_en">English Only</option>
+          </select>
+      </div>
+
+      <div class="checkbox-group" style="margin-top:10px;">
         <label>
           <input type="checkbox" id="filter-duplicates"> <span data-i18n="opt_duplicates_title">Remove Duplicates</span>
         </label>

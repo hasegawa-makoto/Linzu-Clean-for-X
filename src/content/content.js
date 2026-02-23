@@ -233,6 +233,14 @@ function injectFloatingUI() {
         if (changes.licenseStatus) {
              appSettings.licenseStatus = changes.licenseStatus.newValue;
              updateUIText(); // Update warning visibility
+
+             // If license state changed, we need to reset/re-scan to apply new rules (or stop applying)
+             // Clear processed flags to allow re-evaluation
+             restoreAllVisibility();
+             if (appSettings.isEnabled) {
+                 const articles = document.querySelectorAll('article[data-testid="tweet"]');
+                 scanNodes(articles);
+             }
         }
         if (changes.isMinimized) {
             appSettings.isMinimized = changes.isMinimized.newValue;
@@ -628,24 +636,27 @@ function resetSession() {
 }
 
 function restoreAllVisibility() {
-    const hiddenArticles = document.querySelectorAll('article[data-linzu-hidden="true"], article[data-linzu-dynamic-hidden="true"]');
-    hiddenArticles.forEach(article => {
-        article.style.display = '';
+    const articles = document.querySelectorAll('article[data-testid="tweet"]');
+    articles.forEach(article => {
+        if (article.style.display === 'none') article.style.display = '';
         delete article.dataset.linzuHidden;
         delete article.dataset.linzuDynamicHidden;
         delete article.dataset.linzuProcessed;
+        delete article.dataset.linzuChecked; // Legacy cleanup
     });
     updateCounterDisplay();
 }
 
 LinzuI18n.init(() => {
-  injectFloatingUI();
-  startObserver();
-  // Initial scan of existing content
-  const existingArticles = document.querySelectorAll('article[data-testid="tweet"]');
-  if (existingArticles.length > 0) {
-      scanNodes(existingArticles);
-  }
+  loadSettings(() => {
+      injectFloatingUI();
+      startObserver();
+      // Initial scan of existing content
+      const existingArticles = document.querySelectorAll('article[data-testid="tweet"]');
+      if (existingArticles.length > 0) {
+          scanNodes(existingArticles);
+      }
+  });
 });
 
 function startObserver() {

@@ -1,13 +1,13 @@
 // src/options/options.js
 document.addEventListener('DOMContentLoaded', () => {
     // --- Elements ---
+    const uiLanguageSelect = document.getElementById('ui-language');
     const licenseKeyInput = document.getElementById('license-key');
     const activateBtn = document.getElementById('activate-btn');
     const licenseMsg = document.getElementById('license-msg');
-    const saveBtn = document.getElementById('save-btn');
-    const statusMsg = document.getElementById('status-msg');
 
-    // Checkboxes
+    // Checkboxes & Selects
+    const filterLanguageSelect = document.getElementById('filter-language');
     const filterDuplicates = document.getElementById('filter-duplicates');
     const filterUnverified = document.getElementById('filter-unverified');
 
@@ -21,31 +21,62 @@ document.addEventListener('DOMContentLoaded', () => {
     const botLinks = document.getElementById('bot-links');
 
     const customKeywords = document.getElementById('custom-keywords');
+    const saveBtn = document.getElementById('save-btn');
+    const statusMsg = document.getElementById('status-msg');
 
     // --- Init ---
     LinzuI18n.init(() => {
-        LinzuI18n.translatePage();
         loadOptions();
+        // Translate initially
+        LinzuI18n.translatePage();
+    });
+
+    // --- UI Language Change ---
+    uiLanguageSelect.addEventListener('change', (e) => {
+        const newLang = e.target.value;
+        // Apply immediately to I18n
+        LinzuI18n.setLocale(newLang, () => {
+             LinzuI18n.translatePage();
+             // Update dynamic texts
+             updateLicenseStatusText();
+             // Update button text
+             if (licenseKeyInput.disabled) {
+                 activateBtn.textContent = LinzuI18n.t('opt_deactivate');
+             } else {
+                 activateBtn.textContent = LinzuI18n.t('opt_activate');
+             }
+        });
     });
 
     // --- Load ---
     function loadOptions() {
-        // Load License
-        LinzuLicense.init((isValid) => {
-            if (isValid) {
-                licenseMsg.textContent = 'PRO License Active';
-                licenseMsg.className = 'status-msg success';
-                licenseKeyInput.value = LinzuLicense.key;
-                licenseKeyInput.disabled = true;
-                activateBtn.textContent = 'Deactivate';
-            } else {
-                licenseMsg.textContent = 'Unlicensed (Limited Mode)';
-                licenseMsg.className = 'status-msg error';
-            }
-        });
-
-        // Load Settings
+        // Load Settings first
         chrome.storage.local.get(null, (items) => {
+            // UI Lang
+            if (items.language) {
+                uiLanguageSelect.value = items.language;
+                LinzuI18n.setLocale(items.language, () => {
+                    LinzuI18n.translatePage();
+                });
+            } else {
+                uiLanguageSelect.value = 'ja'; // default
+            }
+
+            // License
+            LinzuLicense.init((isValid) => {
+               updateLicenseStatusText(isValid);
+               if (isValid) {
+                    licenseKeyInput.value = LinzuLicense.key;
+                    licenseKeyInput.disabled = true;
+                    activateBtn.textContent = LinzuI18n.t('opt_deactivate');
+               } else {
+                    licenseKeyInput.disabled = false;
+                    activateBtn.textContent = LinzuI18n.t('opt_activate');
+               }
+            });
+
+            // Filters
+            if (filterLanguageSelect) filterLanguageSelect.value = items.filterLanguage || 'all';
             if (filterDuplicates) filterDuplicates.checked = items.filterDuplicates || false;
             if (filterUnverified) filterUnverified.checked = items.filterUnverified || false;
 
@@ -63,32 +94,49 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             if (items.customKeywords && customKeywords) {
-                customKeywords.value = items.customKeywords.join('\n');
+                if (items.customKeywords && Array.isArray(items.customKeywords)) {
+                    customKeywords.value = items.customKeywords.join('\n');
+                }
             }
         });
+    }
+
+    function updateLicenseStatusText(isValid) {
+        // If isValid is not passed, re-check
+        if (isValid === undefined) {
+             isValid = LinzuLicense.check();
+        }
+
+        if (isValid) {
+            licenseMsg.textContent = LinzuI18n.t('opt_license_active');
+            licenseMsg.className = 'status-msg success';
+        } else {
+            licenseMsg.textContent = LinzuI18n.t('opt_license_inactive');
+            licenseMsg.className = 'status-msg error';
+        }
     }
 
     // --- License Action ---
     if (activateBtn) {
         activateBtn.addEventListener('click', () => {
-            if (activateBtn.textContent === 'Deactivate') {
+            if (licenseKeyInput.disabled) {
+                // Deactivate
                 LinzuLicense.deactivate(() => {
-                    licenseMsg.textContent = 'Deactivated.';
-                    licenseMsg.className = 'status-msg';
+                    updateLicenseStatusText(false);
                     licenseKeyInput.value = '';
                     licenseKeyInput.disabled = false;
-                    activateBtn.textContent = 'Activate';
+                    activateBtn.textContent = LinzuI18n.t('opt_activate');
                 });
             } else {
+                // Activate
                 const key = licenseKeyInput.value;
                 LinzuLicense.activate(key, (success) => {
                     if (success) {
-                        licenseMsg.textContent = 'Activation Successful!';
-                        licenseMsg.className = 'status-msg success';
+                        updateLicenseStatusText(true);
                         licenseKeyInput.disabled = true;
-                        activateBtn.textContent = 'Deactivate';
+                        activateBtn.textContent = LinzuI18n.t('opt_deactivate');
                     } else {
-                        licenseMsg.textContent = 'Invalid Key.';
+                        licenseMsg.textContent = 'Invalid Key.'; // Not translated for error detail yet
                         licenseMsg.className = 'status-msg error';
                     }
                 });
@@ -100,6 +148,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (saveBtn) {
         saveBtn.addEventListener('click', () => {
             const settings = {
+                language: uiLanguageSelect.value, // Save UI language
+                filterLanguage: filterLanguageSelect ? filterLanguageSelect.value : 'all',
                 filterDuplicates: filterDuplicates ? filterDuplicates.checked : false,
                 filterUnverified: filterUnverified ? filterUnverified.checked : false,
                 filterContent: {
@@ -120,6 +170,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 statusMsg.textContent = LinzuI18n.t('opt_status_saved');
                 statusMsg.className = 'status-msg success';
                 setTimeout(() => { statusMsg.textContent = ''; }, 2000);
+
+                // Also update locale immediately to storage (redundant but safe)
+                LinzuI18n.setLocale(uiLanguageSelect.value);
             });
         });
     }
