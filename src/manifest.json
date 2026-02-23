@@ -1,47 +1,45 @@
 {
   "manifest_version": 3,
-  "name": "Linzu Clean for X",
-  "version": "1.0",
-  "description": "Filters unwanted content (Zombie, Spam, Toxic) on X.",
+  "name": "__MSG_appName__",
+  "version": "1.0.0",
+  "description": "__MSG_appDesc__",
+  "default_locale": "ja",
   "permissions": [
-    "storage",
-    "scripting",
-    "activeTab"
+    "storage"
+  ],
+  "host_permissions": [
+    "https://x.com/*",
+    "https://twitter.com/*"
   ],
   "background": {
-    "service_worker": "background/service-worker.js"
+    "service_worker": "background/background.js"
   },
-  "content_scripts": [
-    {
-      "matches": [
-        "*://x.com/*",
-        "*://twitter.com/*"
-      ],
-      "js": [
-        "utils/i18n.js",
-        "content/content.js"
-      ],
-      "css": [
-        "content/content.css"
-      ],
-      "run_at": "document_idle"
-    }
-  ],
   "action": {
     "default_popup": "popup/popup.html",
     "default_icon": {
-      "16": "icons/icon-16.svg",
-      "48": "icons/icon-48.svg",
-      "128": "icons/icon-128.svg"
+      "16": "icons/icon-16.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
     }
   },
-  "options_ui": {
-    "page": "options/options.html",
-    "open_in_tab": true
-  },
+  "options_page": "options/options.html",
   "icons": {
-    "16": "icons/icon-16.svg",
-    "48": "icons/icon-48.svg",
-    "128": "icons/icon-128.svg"
-  }
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://x.com/*", "https://twitter.com/*"],
+      "js": ["utils/i18n.js", "content/content.js"],
+      "css": ["content/content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["utils/i18n.js", "content/content.css", "icons/*.png"],
+      "matches": ["https://x.com/*", "https://twitter.com/*"]
+    }
+  ]
 }

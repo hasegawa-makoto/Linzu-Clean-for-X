@@ -1,0 +1,68 @@
+body {
+  font-family: Arial, sans-serif;
+  padding: 20px;
+  background-color: #f5f8fa;
+}
+
+.container {
+  max-width: 600px;
+  margin: 0 auto;
+  background-color: white;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+h1 {
+  text-align: center;
+  margin-bottom: 20px;
+  color: #1da1f2;
+}
+
+.section {
+  margin-bottom: 20px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e1e8ed;
+}
+
+.section h2 {
+  font-size: 16px;
+  margin-bottom: 10px;
+}
+
+.checkbox-group label {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.license-box {
+  background: #f0f4f8;
+  padding: 15px;
+  border-radius: 6px;
+  border: 1px solid #ccd6dd;
+}
+
+.license-input {
+  width: 70%;
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.license-btn {
+  padding: 8px 15px;
+  background: #1da1f2;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.status-msg {
+  display: block;
+  margin-top: 5px;
+  font-size: 0.9em;
+}
+
+.success { color: green; }
+.error { color: red; }

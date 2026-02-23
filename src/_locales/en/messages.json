@@ -1,0 +1,10 @@
+{
+  "appName": {
+    "message": "Linzu Clean for X",
+    "description": "The name of the application"
+  },
+  "appDesc": {
+    "message": "Remove noise, bots, and spam from X (x.com) with advanced filtering.",
+    "description": "The description of the application"
+  }
+}

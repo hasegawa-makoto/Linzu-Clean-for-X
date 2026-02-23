@@ -30,7 +30,8 @@ let appSettings = {
     emoji: false,
     links: false
   },
-  customKeywords: []
+  customKeywords: [],
+  licenseStatus: 'inactive' // 'active' or 'inactive'
 };
 
 // Dynamic State (Session only)
@@ -73,6 +74,17 @@ function updateUIText() {
     const ownerLabel = document.querySelector('label[for="linzu-owner"]');
     const searchInput = document.getElementById('linzu-search');
 
+    // License Warning
+    const licenseWarning = document.getElementById('linzu-license-warning');
+    if (licenseWarning) {
+        if (appSettings.licenseStatus === 'active') {
+            licenseWarning.style.display = 'none';
+        } else {
+            licenseWarning.style.display = 'block';
+            licenseWarning.textContent = LinzuI18n.t('ui_license_required');
+        }
+    }
+
     if (title) title.textContent = LinzuI18n.t('appTitle');
     if (statsLabel) statsLabel.textContent = LinzuI18n.t('ui_removed');
     if (settingsBtn) settingsBtn.textContent = LinzuI18n.t('ui_settings');
@@ -113,6 +125,10 @@ function injectFloatingUI() {
         </label>
       </div>
 
+      <div id="linzu-license-warning" style="display:none; color:red; font-size:10px; margin-bottom:5px; text-align:center;">
+          ${LinzuI18n.t('ui_license_required')}
+      </div>
+
       <div class="linzu-controls">
         <label class="linzu-control-item" for="linzu-owner">
           <input type="checkbox" id="linzu-owner"> ${LinzuI18n.t('ui_dynamic_owner')}
@@ -146,6 +162,7 @@ function injectFloatingUI() {
       if (appSettings.isMinimized) {
           uiContainer.classList.add('linzu-minimized');
       }
+      updateUIText(); // Check license display
       updateCounterDisplay();
     });
 
@@ -213,6 +230,10 @@ function injectFloatingUI() {
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area === 'local') {
         if (changes.isEnabled) appSettings.isEnabled = changes.isEnabled.newValue;
+        if (changes.licenseStatus) {
+             appSettings.licenseStatus = changes.licenseStatus.newValue;
+             updateUIText(); // Update warning visibility
+        }
         if (changes.isMinimized) {
             appSettings.isMinimized = changes.isMinimized.newValue;
             if (appSettings.isMinimized) uiContainer.classList.add('linzu-minimized');
@@ -324,6 +345,13 @@ function applyDynamicFilters() {
         });
         updateCounterDisplay();
         return;
+    }
+
+    // License Check for Dynamic Filters
+    if (appSettings.licenseStatus !== 'active') {
+         // Force reveal if not active? Or just don't apply?
+         // Let's just return to disable dynamic filters
+         return;
     }
 
     const currentProfileOwner = getCurrentProfileOwner();
@@ -515,6 +543,10 @@ function processTweet(article) {
     if (article.dataset.linzuProcessed) return;
     article.dataset.linzuProcessed = "true";
 
+    // License Gate (Strict Mode)
+    // If not active, skip ALL filtering
+    if (appSettings.licenseStatus !== 'active') return;
+
     const handle = getUsername(article);
     const statusId = getStatusId(article);
 
@@ -523,7 +555,6 @@ function processTweet(article) {
     if (currentProfileOwner && handle === currentProfileOwner) return;
 
     // 3. Skip reprocessing logic if no ID found or ID already hidden
-    // (Wait, we need to check duplicate ID before skipping)
 
     // Pre-calculations
     const tweetTextNode = article.querySelector('div[data-testid="tweetText"]');

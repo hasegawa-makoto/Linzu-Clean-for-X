@@ -11,6 +11,7 @@ window.LinzuI18n = {
       ui_settings: '設定',
       ui_hide_panel: 'パネルを閉じる',
       ui_show_panel: 'パネルを表示',
+      ui_license_required: '有効なライセンスが必要です',
 
       ui_dynamic_owner: '本人のみ表示',
       ui_dynamic_search: 'ユーザー検索 (@ID)',
@@ -18,6 +19,10 @@ window.LinzuI18n = {
       opt_title: 'フィルタ設定',
       opt_ui_lang: 'UI表示言語',
       opt_content_lang: '表示を維持する言語',
+
+      opt_license_title: 'Proライセンス',
+      opt_license_desc: '全機能を利用するにはライセンスキーを入力してください。',
+      opt_activate: '認証する',
 
       opt_lang_all: 'すべて',
       opt_lang_ja: '日本語のみ',
@@ -28,6 +33,7 @@ window.LinzuI18n = {
 
       opt_verified_title: 'アカウント認証フィルター',
       opt_unverified_title: '未認証アカウント(青バッジなし)を非表示',
+      opt_general_title: '一般設定',
 
       opt_content_title: 'コンテンツ制限',
       opt_content_img: '画像/動画のみの投稿を非表示',
@@ -44,6 +50,7 @@ window.LinzuI18n = {
       opt_keywords_placeholder: '非表示にしたい単語を1行に1つ入力してください',
 
       opt_status_saved: '設定を保存しました。',
+      opt_save: '設定を保存',
 
       popup_status: 'ステータス:',
       popup_active: '有効',
@@ -59,6 +66,7 @@ window.LinzuI18n = {
       ui_settings: 'Settings',
       ui_hide_panel: 'Hide Panel',
       ui_show_panel: 'Show Panel',
+      ui_license_required: 'Valid License Required',
 
       ui_dynamic_owner: 'Owner Only',
       ui_dynamic_search: 'Focus User (@ID)',
@@ -66,6 +74,10 @@ window.LinzuI18n = {
       opt_title: 'Filter Settings',
       opt_ui_lang: 'UI Language',
       opt_content_lang: 'Keep Content Language',
+
+      opt_license_title: 'Pro License',
+      opt_license_desc: 'Enter your license key to unlock full features.',
+      opt_activate: 'Activate',
 
       opt_lang_all: 'All',
       opt_lang_ja: 'Japanese Only',
@@ -76,6 +88,7 @@ window.LinzuI18n = {
 
       opt_verified_title: 'Verified Account Filter',
       opt_unverified_title: 'Hide Unverified (No Blue Check) Accounts',
+      opt_general_title: 'General Settings',
 
       opt_content_title: 'Content Restrictions',
       opt_content_img: 'Hide Image/Video Only Posts',
@@ -92,6 +105,7 @@ window.LinzuI18n = {
       opt_keywords_placeholder: 'Enter words to block, one per line',
 
       opt_status_saved: 'Settings saved.',
+      opt_save: 'Save Settings',
 
       popup_status: 'Status:',
       popup_active: 'Active',

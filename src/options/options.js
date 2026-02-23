@@ -1,150 +1,126 @@
 // src/options/options.js
-const defaultContent = {
-  imageOnly: false,
-  shortPost: false,
-  excessiveLinks: false
-};
+document.addEventListener('DOMContentLoaded', () => {
+    // --- Elements ---
+    const licenseKeyInput = document.getElementById('license-key');
+    const activateBtn = document.getElementById('activate-btn');
+    const licenseMsg = document.getElementById('license-msg');
+    const saveBtn = document.getElementById('save-btn');
+    const statusMsg = document.getElementById('status-msg');
 
-const defaultBot = {
-  digits: false,
-  defaultIcon: false,
-  emoji: false,
-  links: false
-};
+    // Checkboxes
+    const filterDuplicates = document.getElementById('filter-duplicates');
+    const filterUnverified = document.getElementById('filter-unverified');
 
-function saveOptions() {
-  const filterContent = {
-    imageOnly: document.getElementById('contentImageOnly').checked,
-    shortPost: document.getElementById('contentShortPost').checked,
-    excessiveLinks: document.getElementById('contentExcessiveLinks').checked
-  };
+    const contentImageOnly = document.getElementById('content-image-only');
+    const contentShort = document.getElementById('content-short');
+    const contentLinks = document.getElementById('content-links');
 
-  const filterBot = {
-    digits: document.getElementById('botDigits').checked,
-    defaultIcon: document.getElementById('botDefaultIcon').checked,
-    emoji: document.getElementById('botEmoji').checked,
-    links: document.getElementById('botLinks').checked
-  };
+    const botDigits = document.getElementById('bot-digits');
+    const botIcon = document.getElementById('bot-icon');
+    const botEmoji = document.getElementById('bot-emoji');
+    const botLinks = document.getElementById('bot-links');
 
-  const filterDuplicates = document.getElementById('filterDuplicates').checked;
-  const filterUnverified = document.getElementById('filterUnverified').checked;
-  const filterLanguage = document.getElementById('filterLanguage').value;
+    const customKeywords = document.getElementById('custom-keywords');
 
-  // Parse keywords from textarea (split by newline, trim, remove empty)
-  const keywordsText = document.getElementById('customKeywords').value;
-  const customKeywords = keywordsText.split('\n').map(k => k.trim()).filter(k => k.length > 0);
-
-  chrome.storage.local.set({
-    filterContent: filterContent,
-    filterBot: filterBot,
-    filterDuplicates: filterDuplicates,
-    filterUnverified: filterUnverified,
-    filterLanguage: filterLanguage,
-    customKeywords: customKeywords
-  }, () => {
-    showStatus();
-  });
-}
-
-function showStatus() {
-  const status = document.getElementById('status');
-  status.textContent = LinzuI18n.t('opt_status_saved');
-  status.style.display = 'block';
-  setTimeout(() => {
-    status.style.display = 'none';
-  }, 1500);
-}
-
-function restoreOptions() {
-  chrome.storage.local.get([
-    'language',
-    'filterDuplicates',
-    'filterUnverified',
-    'filterVerified', // legacy check
-    'filterLanguage',
-    'filterContent',
-    'filterBot',
-    'customKeywords'
-  ], (result) => {
-
-    // UI Language
-    const lang = result.language || 'ja';
-    const langSelect = document.getElementById('language-select');
-    if (langSelect) {
-      langSelect.value = lang;
-    }
-
-    // New Rules
-    document.getElementById('filterDuplicates').checked = result.filterDuplicates || false;
-    document.getElementById('filterLanguage').value = result.filterLanguage || 'all';
-
-    // Unverified
-    if (result.filterUnverified !== undefined) {
-        document.getElementById('filterUnverified').checked = result.filterUnverified;
-    } else {
-        // Migration from old filterVerified logic
-        // Old: filterVerified = { non_blue: true/false }
-        if (result.filterVerified && typeof result.filterVerified === 'object') {
-            document.getElementById('filterUnverified').checked = result.filterVerified.non_blue || false;
-        } else {
-            document.getElementById('filterUnverified').checked = false;
-        }
-    }
-
-    const content = result.filterContent || defaultContent;
-    document.getElementById('contentImageOnly').checked = content.imageOnly || false;
-    document.getElementById('contentShortPost').checked = content.shortPost || false;
-    document.getElementById('contentExcessiveLinks').checked = content.excessiveLinks || false;
-
-    const bot = result.filterBot || defaultBot;
-    document.getElementById('botDigits').checked = bot.digits || false;
-    document.getElementById('botDefaultIcon').checked = bot.defaultIcon || false;
-    document.getElementById('botEmoji').checked = bot.emoji || false;
-    document.getElementById('botLinks').checked = bot.links || false;
-
-    const keywords = result.customKeywords || [];
-    document.getElementById('customKeywords').value = keywords.join('\n');
-
-    // Initialize I18n
+    // --- Init ---
     LinzuI18n.init(() => {
-      LinzuI18n.translatePage();
+        LinzuI18n.translatePage();
+        loadOptions();
     });
-  });
-}
 
-function handleLanguageChange(e) {
-  const newLang = e.target.value;
-  LinzuI18n.setLocale(newLang, () => {
-    LinzuI18n.translatePage();
-    showStatus();
-  });
-}
-
-document.addEventListener('DOMContentLoaded', restoreOptions);
-
-// Add event listeners to all inputs
-const inputs = document.querySelectorAll('input, select, textarea');
-inputs.forEach(input => {
-    if (input.id === 'language-select') {
-        input.addEventListener('change', handleLanguageChange);
-    } else {
-        input.addEventListener('change', saveOptions);
-    }
-});
-
-
-// Listen for storage changes in case changed from another tab/popup
-chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local') {
-    if (changes.language) {
-      const newLang = changes.language.newValue;
-      const langSelect = document.getElementById('language-select');
-      if (langSelect && langSelect.value !== newLang) {
-        langSelect.value = newLang;
-        LinzuI18n.setLocale(newLang, () => {
-          LinzuI18n.translatePage();
+    // --- Load ---
+    function loadOptions() {
+        // Load License
+        LinzuLicense.init((isValid) => {
+            if (isValid) {
+                licenseMsg.textContent = 'PRO License Active';
+                licenseMsg.className = 'status-msg success';
+                licenseKeyInput.value = LinzuLicense.key;
+                licenseKeyInput.disabled = true;
+                activateBtn.textContent = 'Deactivate';
+            } else {
+                licenseMsg.textContent = 'Unlicensed (Limited Mode)';
+                licenseMsg.className = 'status-msg error';
+            }
         });
-      }
+
+        // Load Settings
+        chrome.storage.local.get(null, (items) => {
+            if (filterDuplicates) filterDuplicates.checked = items.filterDuplicates || false;
+            if (filterUnverified) filterUnverified.checked = items.filterUnverified || false;
+
+            if (items.filterContent) {
+                if (contentImageOnly) contentImageOnly.checked = items.filterContent.imageOnly || false;
+                if (contentShort) contentShort.checked = items.filterContent.shortPost || false;
+                if (contentLinks) contentLinks.checked = items.filterContent.excessiveLinks || false;
+            }
+
+            if (items.filterBot) {
+                if (botDigits) botDigits.checked = items.filterBot.digits || false;
+                if (botIcon) botIcon.checked = items.filterBot.defaultIcon || false;
+                if (botEmoji) botEmoji.checked = items.filterBot.emoji || false;
+                if (botLinks) botLinks.checked = items.filterBot.links || false;
+            }
+
+            if (items.customKeywords && customKeywords) {
+                customKeywords.value = items.customKeywords.join('\n');
+            }
+        });
     }
-  }
+
+    // --- License Action ---
+    if (activateBtn) {
+        activateBtn.addEventListener('click', () => {
+            if (activateBtn.textContent === 'Deactivate') {
+                LinzuLicense.deactivate(() => {
+                    licenseMsg.textContent = 'Deactivated.';
+                    licenseMsg.className = 'status-msg';
+                    licenseKeyInput.value = '';
+                    licenseKeyInput.disabled = false;
+                    activateBtn.textContent = 'Activate';
+                });
+            } else {
+                const key = licenseKeyInput.value;
+                LinzuLicense.activate(key, (success) => {
+                    if (success) {
+                        licenseMsg.textContent = 'Activation Successful!';
+                        licenseMsg.className = 'status-msg success';
+                        licenseKeyInput.disabled = true;
+                        activateBtn.textContent = 'Deactivate';
+                    } else {
+                        licenseMsg.textContent = 'Invalid Key.';
+                        licenseMsg.className = 'status-msg error';
+                    }
+                });
+            }
+        });
+    }
+
+    // --- Save ---
+    if (saveBtn) {
+        saveBtn.addEventListener('click', () => {
+            const settings = {
+                filterDuplicates: filterDuplicates ? filterDuplicates.checked : false,
+                filterUnverified: filterUnverified ? filterUnverified.checked : false,
+                filterContent: {
+                    imageOnly: contentImageOnly ? contentImageOnly.checked : false,
+                    shortPost: contentShort ? contentShort.checked : false,
+                    excessiveLinks: contentLinks ? contentLinks.checked : false
+                },
+                filterBot: {
+                    digits: botDigits ? botDigits.checked : false,
+                    defaultIcon: botIcon ? botIcon.checked : false,
+                    emoji: botEmoji ? botEmoji.checked : false,
+                    links: botLinks ? botLinks.checked : false
+                },
+                customKeywords: customKeywords ? customKeywords.value.split('\n').filter(k => k.trim() !== '') : []
+            };
+
+            chrome.storage.local.set(settings, () => {
+                statusMsg.textContent = LinzuI18n.t('opt_status_saved');
+                statusMsg.className = 'status-msg success';
+                setTimeout(() => { statusMsg.textContent = ''; }, 2000);
+            });
+        });
+    }
 });
