@@ -64,9 +64,7 @@ const hiddenStatusIds = new Set();
 let currentThreadOP = null;
 
 // Global session tracking for thread-specific duplicate filtering
-const sessionSeenUsers = new Set();
-const threadSpamAllowedStatusIds = new Set();
-const threadSpamHiddenStatusIds = new Set();
+const seenUserHandles = new Map();
 
 // Debounce Timer for Dynamic Filters
 let dynamicFilterTimeout = null;
@@ -453,10 +451,10 @@ function applyThreadUserSpamFilter() {
         const articles = document.querySelectorAll('article[data-testid="tweet"]');
 
         for (const article of articles) {
-            // Skip dynamically/permanently hidden tweets by other filters (but not by spam filter)
+            // 他のフィルター（重複、bot等）で非表示になったものはスキップ
             if (article.style.display === 'none' && !article.dataset.linzuSpamHidden) continue;
 
-            // Skip un-processed tweets to ensure baseline filters apply first
+            // ベースラインフィルターが適用されるのを待つ
             if (!article.dataset.linzuProcessed) continue;
 
             const handle = getUsername(article);
@@ -465,53 +463,36 @@ function applyThreadUserSpamFilter() {
             const lowerHandle = handle.toLowerCase();
             const statusId = getStatusId(article);
 
-            // 1. そのユーザーが「スレッド主（親）」であれば、常に表示。
+            // 1. スレッドの親（一番上の投稿主）は対象外とし、常に表示
             if (currentThreadOP && lowerHandle === currentThreadOP.toLowerCase()) {
                 if (article.dataset.linzuSpamHidden) {
                     article.style.display = '';
                     delete article.dataset.linzuSpamHidden;
                 }
-                sessionSeenUsers.add(lowerHandle);
-                if (statusId) {
-                    threadSpamAllowedStatusIds.add(statusId);
-                }
                 continue;
             }
 
-            // Check cache for absolute decisions on this specific tweet to handle virtual scrolling
-            if (statusId) {
-                if (threadSpamAllowedStatusIds.has(statusId)) {
+            // 2. 既に表示したことがあるユーザーか？
+            if (seenUserHandles.has(lowerHandle)) {
+                // 仮想スクロール対策：全く同じツイート（StatusIDが同一）が再描画された場合は表示を許可
+                if (statusId && seenUserHandles.get(lowerHandle) === statusId) {
                     if (article.dataset.linzuSpamHidden) {
                         article.style.display = '';
                         delete article.dataset.linzuSpamHidden;
                     }
                     continue;
                 }
-                if (threadSpamHiddenStatusIds.has(statusId)) {
-                    article.style.display = 'none';
-                    article.dataset.linzuSpamHidden = 'true';
-                    continue;
-                }
-            }
 
-            // 2. そのユーザーが すでに表示済みリストに存在する場合、即座に非表示
-            if (sessionSeenUsers.has(lowerHandle)) {
+                // 理由を問わず、2回目以降の別投稿は即座に非表示
                 article.style.display = 'none';
                 article.dataset.linzuSpamHidden = 'true';
-                if (statusId) {
-                    threadSpamHiddenStatusIds.add(statusId);
+            } else {
+                // 初登場：表示を許可し、IDとStatusIDをリストに追加
+                if (article.dataset.linzuSpamHidden) {
+                    article.style.display = '';
+                    delete article.dataset.linzuSpamHidden;
                 }
-                continue;
-            }
-
-            // 3. 初登場のユーザーは、表示してリストに追加する。
-            if (article.dataset.linzuSpamHidden) {
-                article.style.display = '';
-                delete article.dataset.linzuSpamHidden;
-            }
-            sessionSeenUsers.add(lowerHandle);
-            if (statusId) {
-                threadSpamAllowedStatusIds.add(statusId);
+                seenUserHandles.set(lowerHandle, statusId);
             }
         }
         updateCounterDisplay();
@@ -811,9 +792,7 @@ function startObserver() {
 
     if (location.href !== lastUrl) {
         if (isRealNavigation) {
-            sessionSeenUsers.clear();
-            threadSpamAllowedStatusIds.clear();
-            threadSpamHiddenStatusIds.clear();
+            seenUserHandles.clear();
             isRealNavigation = false; // consume
         }
 
