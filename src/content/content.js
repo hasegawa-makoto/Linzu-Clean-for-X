@@ -300,6 +300,26 @@ function loadSettings(callback) {
 
 // --- Logic Helpers ---
 
+function getReplyTargets(article) {
+    const targets = new Set();
+    try {
+        const text = article.textContent || "";
+        // 「Replying to @user」や「返信先: @user」を抽出
+        const match = text.match(/(?:Replying to|返信先:\s*)@([a-zA-Z0-9_]+)/i);
+        if (match) targets.add(match[1].toLowerCase());
+
+        // DOM内のメンションリンクを抽出
+        const links = article.querySelectorAll('a[href^="/"]');
+        for (let link of links) {
+            const linkText = link.textContent.trim();
+            if (linkText.startsWith('@')) {
+                targets.add(linkText.substring(1).toLowerCase());
+            }
+        }
+    } catch(e) {}
+    return targets;
+}
+
 function getUsername(article) {
   try {
     const userNameDiv = article.querySelector('[data-testid="User-Name"]');
@@ -501,14 +521,26 @@ function applyThreadUserSpamFilter() {
                 continue;
             }
 
-            // --- ステップ2：会話のバトンパス（Bさんの救済） ---
-            // Aさん以外のユーザー（Bさん）であっても、「直前の表示者（lastVisibleUser）」と異なる場合は
-            // A-B-A-B のような交互の会話（キャッチボール）とみなして表示を許可する。
-            // ※ Xの「Replying to」DOMテキストが欠落する仕様への最も確実な物理的対策。
-            const isConversation = lastVisibleUser && lastVisibleUser !== lowerHandle;
+            // --- ステップ2：初登場のユーザーは無条件合格 ---
+            if (!mainListSeenUsers.has(lowerHandle)) {
+                if (article.dataset.linzuSpamHidden) {
+                    article.style.display = '';
+                    delete article.dataset.linzuSpamHidden;
+                }
+                mainListSeenUsers.set(lowerHandle, new Set([statusId]));
+                lastVisibleUser = lowerHandle;
+                continue;
+            }
 
-            // リストに既に存在（2回目以降）だが、会話である場合
-            if (mainListSeenUsers.has(lowerHandle) && isConversation) {
+            // --- ステップ3：会話チェーン（ABAB）の厳格な救済 ---
+            // 2回目以降の登場だが、「正当な会話」として許可する条件
+            // 条件A: 直前の人が「スレッド主(OP)」である（A->B->A->B の連続性を保護）
+            // 条件B: このツイートの「返信先」に、直前の表示者(lastVisibleUser)が含まれている
+            const replyTargets = getReplyTargets(article);
+            const isReplyToOP = currentThreadOP && lastVisibleUser === currentThreadOP.toLowerCase();
+            const isDirectReplyToLast = lastVisibleUser && replyTargets.has(lastVisibleUser);
+
+            if (isReplyToOP || isDirectReplyToLast) {
                 if (article.dataset.linzuSpamHidden) {
                     article.style.display = '';
                     delete article.dataset.linzuSpamHidden;
@@ -518,22 +550,12 @@ function applyThreadUserSpamFilter() {
                 continue;
             }
 
-            // --- ステップ3：それ以外の重複は排除 ---
-            // 上記1（親）にも2（直前の人との会話）にも当てはまらない「2回目以降のユーザー」
-            // （例：Bの直後にBが来た連投など）は、理由を問わずすべて非表示にする。
-            if (mainListSeenUsers.has(lowerHandle)) {
-                article.style.display = 'none';
-                article.dataset.linzuSpamHidden = 'true';
-                continue; // ※非表示にした場合はバトン（lastVisibleUser）を更新しない！前の人を保持。
-            }
-
-            // --- 初登場のユーザー ---
-            if (article.dataset.linzuSpamHidden) {
-                article.style.display = '';
-                delete article.dataset.linzuSpamHidden;
-            }
-            mainListSeenUsers.set(lowerHandle, new Set([statusId]));
-            lastVisibleUser = lowerHandle;
+            // --- ステップ4：それ以外の重複（連投・散発スパム）はすべて排除 ---
+            // Caleb -> Kiki -> Caleb のようにターゲットが一致しない2回目以降は非表示
+            article.style.display = 'none';
+            article.dataset.linzuSpamHidden = 'true';
+            // ※【重要】非表示にした場合は lastVisibleUser を更新しない（前の人を保持）
+            continue;
         }
         updateCounterDisplay();
     } catch (e) {}
