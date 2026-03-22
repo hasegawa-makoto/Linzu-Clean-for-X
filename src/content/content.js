@@ -63,6 +63,11 @@ const hiddenStatusIds = new Set();
 // Thread OP Tracking
 let currentThreadOP = null;
 
+// Global session tracking for thread-specific duplicate filtering
+const sessionSeenUsers = new Set();
+const threadSpamAllowedStatusIds = new Set();
+const threadSpamHiddenStatusIds = new Set();
+
 // Debounce Timer for Dynamic Filters
 let dynamicFilterTimeout = null;
 
@@ -482,7 +487,6 @@ function applyThreadUserSpamFilter() {
         if (!path.includes('/status/')) return;
 
         const articles = document.querySelectorAll('article[data-testid="tweet"]');
-        const seenUsers = new Set();
         let lastVisibleUser = null;
 
         for (const article of articles) {
@@ -496,6 +500,7 @@ function applyThreadUserSpamFilter() {
             if (!handle) continue;
 
             const lowerHandle = handle.toLowerCase();
+            const statusId = getStatusId(article);
 
             // 1. そのユーザーが「スレッド主（親）」であれば、常に表示。
             if (currentThreadOP && lowerHandle === currentThreadOP.toLowerCase()) {
@@ -503,9 +508,30 @@ function applyThreadUserSpamFilter() {
                     article.style.display = '';
                     delete article.dataset.linzuSpamHidden;
                 }
-                seenUsers.add(lowerHandle);
+                sessionSeenUsers.add(lowerHandle);
+                if (statusId) {
+                    threadSpamAllowedStatusIds.add(statusId);
+                    pruneSet(threadSpamAllowedStatusIds);
+                }
                 lastVisibleUser = lowerHandle;
                 continue;
+            }
+
+            // Check cache for absolute decisions on this specific tweet to handle virtual scrolling
+            if (statusId) {
+                if (threadSpamAllowedStatusIds.has(statusId)) {
+                    if (article.dataset.linzuSpamHidden) {
+                        article.style.display = '';
+                        delete article.dataset.linzuSpamHidden;
+                    }
+                    lastVisibleUser = lowerHandle;
+                    continue;
+                }
+                if (threadSpamHiddenStatusIds.has(statusId)) {
+                    article.style.display = 'none';
+                    article.dataset.linzuSpamHidden = 'true';
+                    continue; // 非表示にしたので lastVisibleUser は更新しない
+                }
             }
 
             // 既存の会話保護条件 (変更禁止)
@@ -513,9 +539,13 @@ function applyThreadUserSpamFilter() {
             const isConversation = lastVisibleUser && lastVisibleUser !== lowerHandle && repliedUsers.has(lastVisibleUser);
 
             // 2. そのユーザーが すでに表示済みリストに存在し、かつ「既存の会話保護条件」にも当てはまらない 場合、即座に非表示
-            if (seenUsers.has(lowerHandle) && !isConversation) {
+            if (sessionSeenUsers.has(lowerHandle) && !isConversation) {
                 article.style.display = 'none';
                 article.dataset.linzuSpamHidden = 'true';
+                if (statusId) {
+                    threadSpamHiddenStatusIds.add(statusId);
+                    pruneSet(threadSpamHiddenStatusIds);
+                }
                 continue; // 非表示にしたので lastVisibleUser は更新しない
             }
 
@@ -524,7 +554,11 @@ function applyThreadUserSpamFilter() {
                 article.style.display = '';
                 delete article.dataset.linzuSpamHidden;
             }
-            seenUsers.add(lowerHandle);
+            sessionSeenUsers.add(lowerHandle);
+            if (statusId) {
+                threadSpamAllowedStatusIds.add(statusId);
+                pruneSet(threadSpamAllowedStatusIds);
+            }
             lastVisibleUser = lowerHandle;
         }
         updateCounterDisplay();
@@ -770,6 +804,9 @@ function resetSession() {
     permittedStatusIds.clear();
     hiddenStatusIds.clear();
     currentThreadOP = null;
+    sessionSeenUsers.clear();
+    threadSpamAllowedStatusIds.clear();
+    threadSpamHiddenStatusIds.clear();
     lastUrl = location.href;
     updateCounterDisplay();
 }
@@ -789,6 +826,9 @@ function restoreAllVisibility() {
     permittedStatusIds.clear();
     hiddenStatusIds.clear();
     currentThreadOP = null;
+    sessionSeenUsers.clear();
+    threadSpamAllowedStatusIds.clear();
+    threadSpamHiddenStatusIds.clear();
 
     updateCounterDisplay();
 }
