@@ -522,7 +522,7 @@ function applyThreadUserSpamFilter() {
                 }
             }
 
-            // 【仮想スクロール保護】
+            // 【仮想スクロール保護（システム要件）】
             // 既に表示許可済みとしてリストに登録されている要素は、再評価をスキップして表示を維持
             if (mainListSeenUsers.has(lowerHandle) && mainListSeenUsers.get(lowerHandle).has(statusId)) {
                 if (article.dataset.linzuSpamHidden) {
@@ -534,21 +534,33 @@ function applyThreadUserSpamFilter() {
                 continue;
             }
 
-            // --- 【ステップ1】判定の最優先：投稿主(A)の保護 ---
-            // スレッドの親（一番上の投稿主A）は無条件で表示。重複チェックから完全に除外する。
+            // --- 【ルール①：投稿主（A）の保護】 ---
+            // 判定対象のユーザーが「スレッドの親（一番上の投稿主A）」である場合：即座に「表示」を確定
             if (currentThreadOP && lowerHandle === currentThreadOP.toLowerCase()) {
                 if (article.dataset.linzuSpamHidden) {
                     article.style.display = '';
                     delete article.dataset.linzuSpamHidden;
                 }
-
-                lastVisibleUser = lowerHandle; // 直前のユーザーを更新
+                lastVisibleUser = lowerHandle;
                 globalLastVisibleUser = lastVisibleUser;
-                continue; // 処理を終了し、下の重複判定には進ませない
+                continue;
             }
 
-            // --- 【ステップ2】会話の救済（A-B-A-Bの保護） ---
-            // Aさん以外のユーザー（Bさん）が2回目以降であっても、直前の表示者への直接の返信なら必ず表示
+            // --- 【ルール②：初登場ユーザーの表示】 ---
+            // そのユーザーIDが mainListSeenUsers にまだ存在しない場合：表示し、リストに追加
+            if (!mainListSeenUsers.has(lowerHandle)) {
+                if (article.dataset.linzuSpamHidden) {
+                    article.style.display = '';
+                    delete article.dataset.linzuSpamHidden;
+                }
+                mainListSeenUsers.set(lowerHandle, new Set([statusId]));
+                lastVisibleUser = lowerHandle;
+                globalLastVisibleUser = lastVisibleUser;
+                continue;
+            }
+
+            // --- 【ルール③：会話チェーン（ABAB）の救済】 ---
+            // 上記に当てはまらない（＝2回目以降）が、「直前の表示者（lastVisibleUser）」への返信である場合：表示
             const repliedUsers = extractRepliedToUsers(article);
             const isConversation = lastVisibleUser && lastVisibleUser !== lowerHandle && repliedUsers.has(lastVisibleUser);
 
@@ -557,38 +569,19 @@ function applyThreadUserSpamFilter() {
                     article.style.display = '';
                     delete article.dataset.linzuSpamHidden;
                 }
-
-                // 記憶リストに追加
-                if (!mainListSeenUsers.has(lowerHandle)) {
-                    mainListSeenUsers.set(lowerHandle, new Set());
-                }
                 mainListSeenUsers.get(lowerHandle).add(statusId);
-
-                lastVisibleUser = lowerHandle; // 直前のユーザーを更新
+                lastVisibleUser = lowerHandle;
                 globalLastVisibleUser = lastVisibleUser;
-                continue; // 処理を終了し、下の重複判定には進ませない
-            }
-
-            // --- 【ステップ3】重複の排除（上記以外） ---
-            // 1（親）でも2（直前への返信）でもない場合のみ、既に一度表示されていれば非表示にする
-            if (mainListSeenUsers.has(lowerHandle)) {
-                article.style.display = 'none';
-                article.dataset.linzuSpamHidden = 'true';
-
-                // ※非表示にした要素は「直前のユーザー」としてカウントしない（更新しない）
                 continue;
             }
 
-            // --- 初登場ユーザー ---
-            // 上記1・2・3に当てはまらない、まだ一度も表示されていない新しいユーザー
-            if (article.dataset.linzuSpamHidden) {
-                article.style.display = '';
-                delete article.dataset.linzuSpamHidden;
-            }
+            // --- 【ルール④：重複排除】 ---
+            // 上記のいずれにも当てはまらない場合（＝2回目以降の登場で、かつ直前の人への返信でもない）：非表示
+            article.style.display = 'none';
+            article.dataset.linzuSpamHidden = 'true';
 
-            mainListSeenUsers.set(lowerHandle, new Set([statusId]));
-            lastVisibleUser = lowerHandle; // 直前のユーザーを更新
-            globalLastVisibleUser = lastVisibleUser;
+            // ※非表示にした場合は、lastVisibleUser を更新してはいけません
+            continue;
         }
         updateCounterDisplay();
     } catch (e) {}
