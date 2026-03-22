@@ -495,36 +495,38 @@ function applyThreadUserSpamFilter() {
             const lowerHandle = handle.toLowerCase();
             const statusId = getStatusId(article);
 
-            // 1. スレッド主は常に表示（絶対聖域）
+            // 【最優先：ルール1】投稿主(A)の保護
+            // スレッドの親は、過去に何度登場していようが、何番目であろうが、必ず「表示」する絶対聖域
             if (currentThreadOP && lowerHandle === currentThreadOP.toLowerCase()) {
                 if (article.dataset.linzuSpamHidden) {
                     article.style.display = '';
                     delete article.dataset.linzuSpamHidden;
                 }
 
-                // 後続のA-B-A-Bの「A」になるためコンテキスト更新
+                // 後続の会話チェーンの基準となるよう記録に追加
                 if (!mainListSeenUsers.has(lowerHandle)) {
                     mainListSeenUsers.set(lowerHandle, new Set());
                 }
                 if (statusId) mainListSeenUsers.get(lowerHandle).add(statusId);
 
                 lastVisibleUser = lowerHandle;
-                continue;
+                continue; // これ以降のルールを無視
             }
 
-            // 2. 既に表示したことがあるユーザーか？
+            // すでに表示したことがあるか（ルール2・ルール3への分岐）
             if (mainListSeenUsers.has(lowerHandle)) {
-                // 仮想スクロール対策：全く同じツイート（StatusIDが同一）が再描画された場合は表示を許可
+                // 仮想スクロール対策：全く同じツイート（StatusIDが同一）が再描画された場合はそのまま表示を継続
                 if (statusId && mainListSeenUsers.get(lowerHandle).has(statusId)) {
                     if (article.dataset.linzuSpamHidden) {
                         article.style.display = '';
                         delete article.dataset.linzuSpamHidden;
                     }
-                    lastVisibleUser = lowerHandle; // 既出の許可されたツイートでも、後続のためにコンテキスト更新
+                    lastVisibleUser = lowerHandle;
                     continue;
                 }
 
-                // 会話チェーン（A-B-A-B）の保護ロジック
+                // 【ルール2：会話の継続】
+                // 直前の表示されている投稿者に対する直接の返信である場合は、会話として表示する
                 const repliedUsers = extractRepliedToUsers(article);
                 const isConversation = lastVisibleUser && lastVisibleUser !== lowerHandle && repliedUsers.has(lastVisibleUser);
 
@@ -535,15 +537,16 @@ function applyThreadUserSpamFilter() {
                     }
                     if (statusId) mainListSeenUsers.get(lowerHandle).add(statusId);
                     lastVisibleUser = lowerHandle;
-                    continue;
+                    continue; // これ以降のルールを無視
                 }
 
-                // 脈絡のない2回目以降の登場は即座に非表示
+                // 【ルール3：重複の排除】
+                // ルール1にもルール2にも当てはまらない、脈絡のない2回目以降の登場は非表示にする
                 article.style.display = 'none';
                 article.dataset.linzuSpamHidden = 'true';
                 continue; // 非表示にしたので lastVisibleUser は更新しない
             } else {
-                // 3. 初登場：表示を許可し、IDとStatusIDをリストに追加
+                // 初登場：表示を許可し、IDとStatusIDをリストに追加
                 if (article.dataset.linzuSpamHidden) {
                     article.style.display = '';
                     delete article.dataset.linzuSpamHidden;
