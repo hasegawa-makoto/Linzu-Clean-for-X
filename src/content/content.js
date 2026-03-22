@@ -518,73 +518,72 @@ function applyThreadUserSpamFilter() {
                 }
             }
 
-            // --- ステップ1：投稿主（Aさん）は無条件合格 ---
-            // 判定対象が「スレッドの親（一番上の投稿主A）」である場合：必ず「表示」
+            // 【仮想スクロール保護】
+            // 既に表示許可済みとしてリストに登録されている要素は、再評価をスキップして表示を維持
+            if (mainListSeenUsers.has(lowerHandle) && mainListSeenUsers.get(lowerHandle).has(statusId)) {
+                if (article.dataset.linzuSpamHidden) {
+                    article.style.display = '';
+                    delete article.dataset.linzuSpamHidden;
+                }
+                lastVisibleUser = lowerHandle; // 直前のユーザーを更新
+                globalLastVisibleUser = lastVisibleUser;
+                continue;
+            }
+
+            // --- 【ステップ1】判定の最優先：投稿主(A)の保護 ---
+            // スレッドの親（一番上の投稿主A）は無条件で表示。重複チェックから完全に除外する。
             if (currentThreadOP && lowerHandle === currentThreadOP.toLowerCase()) {
                 if (article.dataset.linzuSpamHidden) {
                     article.style.display = '';
                     delete article.dataset.linzuSpamHidden;
                 }
 
-                // Aさんはスレッドの軸なので常に合格、表示後は lastVisibleUser を A に更新
-                lastVisibleUser = lowerHandle;
+                lastVisibleUser = lowerHandle; // 直前のユーザーを更新
                 globalLastVisibleUser = lastVisibleUser;
-                continue; // 以下の判定は一切行わない
+                continue; // 処理を終了し、下の重複判定には進ませない
             }
 
-            // 【仮想スクロール保護】（既に許可済みの要素は再評価せず、表示を維持する）
-            if (mainListSeenUsers.has(lowerHandle) && mainListSeenUsers.get(lowerHandle).has(statusId)) {
-                if (article.dataset.linzuSpamHidden) {
-                    article.style.display = '';
-                    delete article.dataset.linzuSpamHidden;
-                }
-                lastVisibleUser = lowerHandle; // 前の人を保持（あるいは更新）
-                globalLastVisibleUser = lastVisibleUser;
-                continue;
-            }
-
-            // --- ステップ2：会話のバトンパス（Bさんの救済） ---
-            // Aさん以外のユーザー（Bさん）であっても、「今、画面上で自分のすぐ上に【表示されている】ユーザー」に対する直接の返信である場合
+            // --- 【ステップ2】会話の救済（A-B-A-Bの保護） ---
+            // Aさん以外のユーザー（Bさん）が2回目以降であっても、直前の表示者への直接の返信なら必ず表示
             const repliedUsers = extractRepliedToUsers(article);
             const isConversation = lastVisibleUser && lastVisibleUser !== lowerHandle && repliedUsers.has(lastVisibleUser);
 
             if (isConversation) {
-                // 条件を満たせば「必ず表示」
                 if (article.dataset.linzuSpamHidden) {
                     article.style.display = '';
                     delete article.dataset.linzuSpamHidden;
                 }
 
-                // 記憶リストに追加し、lastVisibleUser をその人（B）に更新する
+                // 記憶リストに追加
                 if (!mainListSeenUsers.has(lowerHandle)) {
                     mainListSeenUsers.set(lowerHandle, new Set());
                 }
                 mainListSeenUsers.get(lowerHandle).add(statusId);
 
-                lastVisibleUser = lowerHandle;
+                lastVisibleUser = lowerHandle; // 直前のユーザーを更新
                 globalLastVisibleUser = lastVisibleUser;
-                continue; // 以下の判定は一切行わない
+                continue; // 処理を終了し、下の重複判定には進ませない
             }
 
-            // --- ステップ3：それ以外の重複は排除 ---
-            // 上記1・2に当てはまらない「2回目以降のユーザー」は、すべて非表示にする。
+            // --- 【ステップ3】重複の排除（上記以外） ---
+            // 1（親）でも2（直前への返信）でもない場合のみ、既に一度表示されていれば非表示にする
             if (mainListSeenUsers.has(lowerHandle)) {
                 article.style.display = 'none';
                 article.dataset.linzuSpamHidden = 'true';
 
-                // ※非表示にした場合は、lastVisibleUser を更新しないでください。前の人を保持したままにします。
+                // ※非表示にした要素は「直前のユーザー」としてカウントしない（更新しない）
                 continue;
             }
 
-            // --- 初登場のユーザー（1・2・3すべてに該当しない） ---
-            // 初めて出た人は表示する
+            // --- 初登場ユーザー ---
+            // 上記1・2・3に当てはまらない、まだ一度も表示されていない新しいユーザー
             if (article.dataset.linzuSpamHidden) {
                 article.style.display = '';
                 delete article.dataset.linzuSpamHidden;
             }
 
             mainListSeenUsers.set(lowerHandle, new Set([statusId]));
-            lastVisibleUser = lowerHandle;
+            lastVisibleUser = lowerHandle; // 直前のユーザーを更新
             globalLastVisibleUser = lastVisibleUser;
         }
         updateCounterDisplay();
