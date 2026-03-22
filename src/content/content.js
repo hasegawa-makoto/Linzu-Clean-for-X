@@ -61,8 +61,8 @@ const MAX_CACHE_SIZE = 500;
 const permittedStatusIds = new Set();
 const hiddenStatusIds = new Set();
 
-// Thread Chronological Display Tracking for User Spam
-let lastVisibleUser = null;
+// Thread User Frequency Map (Handle -> Count) for User Spam
+const threadUserCounts = new Map();
 
 // Thread OP Tracking
 let currentThreadOP = null;
@@ -418,6 +418,50 @@ function applyDynamicFilters() {
 
 // --- State Helpers ---
 
+function getPreviousTweetAuthor(article) {
+    try {
+        const allArticles = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
+        const index = allArticles.indexOf(article);
+        if (index > 0) {
+            const prevArticle = allArticles[index - 1];
+            return getUsername(prevArticle);
+        }
+    } catch(e) {}
+    return null;
+}
+
+function extractRepliedToUsers(article, authorHandle) {
+    const repliedUsers = new Set();
+    try {
+        // 1. Look for explicit "Replying to @username" text blocks
+        const replyInfoElements = article.querySelectorAll('div[dir="ltr"]');
+        for (const el of replyInfoElements) {
+            const text = el.innerText || "";
+            if (text.includes('@')) {
+                const matches = text.match(/@([a-zA-Z0-9_]+)/g);
+                if (matches) {
+                    matches.forEach(m => {
+                        const handle = m.substring(1);
+                        if (handle !== authorHandle) repliedUsers.add(handle);
+                    });
+                }
+            }
+        }
+
+        // 2. Fallback for visually hidden replies (conversational threads via vertical lines)
+        // Extract all visible @ mentions anywhere in the tweet body
+        const allText = article.innerText || "";
+        const matches = allText.match(/@([a-zA-Z0-9_]+)/g);
+        if (matches) {
+             matches.forEach(m => {
+                 const handle = m.substring(1);
+                 if (handle !== authorHandle) repliedUsers.add(handle);
+             });
+        }
+    } catch(e) {}
+    return repliedUsers;
+}
+
 
 function pruneSet(setInstance) {
     if (setInstance.size > MAX_CACHE_SIZE) {
@@ -478,19 +522,46 @@ function checkContentDuplicate(text, statusId) {
 }
 
 // 2. User Spam Check (Frequency in Thread)
-function checkUserSpam(handle) {
+function checkUserSpam(handle, repliedUsers, article) {
     if (!handle) return false;
 
     // SCOPE LIMITATION: Only run in Thread View (/status/)
     const path = window.LINZU_MOCK_PATH || document.body.dataset.linzuMockPath || location.pathname;
     if (!path.includes('/status/')) return false;
 
-    // We should allow OP freely.
+    // 1. Absolute OP Protection: The Thread OP is entirely immune to spam filters.
     if (currentThreadOP && handle === currentThreadOP) return false;
 
-    // Hide if this user is exactly the same as the last visible user
-    // This allows A-B-A-B while strictly killing A-A-A
-    if (lastVisibleUser === handle) return true;
+    // Increment global count for this thread session
+    const count = (threadUserCounts.get(handle) || 0) + 1;
+    threadUserCounts.set(handle, count);
+
+    // Hide if 2nd or more
+    if (count > 1) {
+        // Exception Check: Is this a legitimate conversation or self-thread?
+        const prevAuthor = getPreviousTweetAuthor(article);
+
+        if (prevAuthor) {
+            if (prevAuthor !== handle) {
+                // It's a different person above them. Allow ONLY if this tweet is replying to that person.
+                // This protects A-B-A-B back-and-forth conversations.
+                if (repliedUsers && repliedUsers.has(prevAuthor)) {
+                    return false; // Valid A-B-A back-and-forth
+                }
+            } else {
+                // It's the same person above them (prevAuthor === handle).
+                // This is a "self-thread". Allow it ONLY if they aren't explicitly replying to someone else.
+                // If they are replying to someone else, but the person above them is themselves,
+                // it means they are spamming multiple independent replies to the parent.
+                if (repliedUsers && repliedUsers.size === 0) {
+                    return false; // Valid self-thread
+                }
+            }
+        }
+
+        // Otherwise, it's an isolated scattered reply (spam)
+        return true;
+    }
 
     return false;
 }
@@ -621,6 +692,9 @@ function processTweet(article) {
 
     const path = window.LINZU_MOCK_PATH || document.body.dataset.linzuMockPath || location.pathname;
 
+    // Extract users this tweet is replying to (used for checking direct conversational turns)
+    const repliedUsers = extractRepliedToUsers(article, handle);
+
     // Identify OP (Thread view)
     // In deep links, the top-most main tweet becomes the new OP.
     const urlStatusIdMatch = path.match(REGEX_STATUS_ID);
@@ -628,7 +702,6 @@ function processTweet(article) {
         if (urlStatusIdMatch[1] === statusId) {
             // Found the OP of the current page!
             currentThreadOP = handle;
-            lastVisibleUser = handle; // OP is visible
             markPermitted(statusId);
             return;
         }
@@ -645,7 +718,7 @@ function processTweet(article) {
 
         // Split Duplicate Checks
         if (appSettings.filterDuplicateContent && checkContentDuplicate(contentText, statusId)) return true;
-        if (appSettings.filterUserSpam && checkUserSpam(handle)) return true;
+        if (appSettings.filterUserSpam && checkUserSpam(handle, repliedUsers, article)) return true;
 
         if (appSettings.filterUnverified && checkUnverified(article)) return true;
 
@@ -665,7 +738,6 @@ function processTweet(article) {
         }
         removeTweet(article);
     } else {
-        lastVisibleUser = handle; // Track successful display
         markPermitted(statusId);
     }
 
@@ -698,8 +770,8 @@ function resetSession() {
     seenContent.clear();
     permittedStatusIds.clear();
     hiddenStatusIds.clear();
+    threadUserCounts.clear(); // Reset thread frequency
     currentThreadOP = null;
-    lastVisibleUser = null;
     lastUrl = location.href;
     updateCounterDisplay();
 }
@@ -717,8 +789,8 @@ function restoreAllVisibility() {
     seenContent.clear();
     permittedStatusIds.clear();
     hiddenStatusIds.clear();
+    threadUserCounts.clear();
     currentThreadOP = null;
-    lastVisibleUser = null;
 
     updateCounterDisplay();
 }
