@@ -442,48 +442,7 @@ function markPermitted(statusId) {
     }
 }
 
-function extractRepliedToUsers(article) {
-    const mentions = new Set();
-
-    // 1. Look for visible or hidden user mentions (links starting with @)
-    const links = article.querySelectorAll('a[role="link"]');
-    links.forEach(link => {
-        // textContent catches visually hidden text via CSS (like connecting lines hiding the banner)
-        const text = link.textContent.trim();
-        if (text.startsWith('@')) {
-            mentions.add(text.substring(1).toLowerCase());
-        } else {
-            // "Replying to @username" text inside links
-            const match = text.match(/@([\w_]+)/);
-            if (match) {
-                mentions.add(match[1].toLowerCase());
-            }
-        }
-
-        // Also check href as a fallback for mentions hidden by CSS entirely
-        const hrefMatch = link.getAttribute('href')?.match(/^\/([\w_]+)$/);
-        // Exclude generic paths
-        if (hrefMatch && !['home', 'explore', 'notifications', 'messages', 'search'].includes(hrefMatch[1].toLowerCase())) {
-            mentions.add(hrefMatch[1].toLowerCase());
-        }
-    });
-
-    // 2. Fallback to parsing all raw text content in the article
-    // textContent catches hidden visually connected "Replying to" banners perfectly
-    const allText = article.textContent || "";
-    const allMatches = allText.match(/@([\w_]+)/g);
-    if (allMatches) {
-        allMatches.forEach(m => mentions.add(m.substring(1).toLowerCase()));
-    }
-
-    return mentions;
-}
-
 // --- Filtering Logic (Permanent) ---
-
-// 1. 記憶のセットアップ（ユーザー指示：広域定義）
-// ※「返信を表示」などでリセットされるまで、この変数はスレッド内で生き続けます。
-let globalLastVisibleUser = null;
 
 function applyThreadUserSpamFilter() {
     try {
@@ -494,10 +453,9 @@ function applyThreadUserSpamFilter() {
 
         const articles = document.querySelectorAll('article[data-testid="tweet"]');
 
-        // 【重要】画面上部のツイートがスクロールで見えなくなった場合でも、
-        // その見えない「すぐ上の人」は、通常はスレッドの親（Aさん）です。
-        // 初期値をAさんのIDにすることで、スクロール途中から評価が始まっても文脈が壊れません。
-        let lastVisibleUser = globalLastVisibleUser || (currentThreadOP ? currentThreadOP.toLowerCase() : null);
+        // 画面上部がスクロールアウトした際に、暗黙の文脈としてスレッド主を初期値とする。
+        // これにより、DOMを上から下へスキャンするだけで「返信を表示」などの新階層にも自然に対応できる。
+        let lastVisibleUser = currentThreadOP ? currentThreadOP.toLowerCase() : null;
 
         for (const article of articles) {
             // 既に非表示（別フィルター）ならスキップ（非表示要素は直前のユーザーとしてカウントしない）
@@ -522,66 +480,60 @@ function applyThreadUserSpamFilter() {
                 }
             }
 
-            // 【仮想スクロール保護（システム要件）】
+            // 【仮想スクロール保護】
             // 既に表示許可済みとしてリストに登録されている要素は、再評価をスキップして表示を維持
             if (mainListSeenUsers.has(lowerHandle) && mainListSeenUsers.get(lowerHandle).has(statusId)) {
                 if (article.dataset.linzuSpamHidden) {
                     article.style.display = '';
                     delete article.dataset.linzuSpamHidden;
                 }
-                lastVisibleUser = lowerHandle; // 直前のユーザーを更新
-                globalLastVisibleUser = lastVisibleUser;
+                lastVisibleUser = lowerHandle; // 許可された要素なのでバトンを渡す
                 continue;
             }
 
-            // --- 【ルール①：投稿主（A）の保護】 ---
-            // 判定対象のユーザーが「スレッドの親（一番上の投稿主A）」である場合：即座に「表示」を確定
+            // --- ステップ1：投稿主（Aさん）は無条件合格 ---
             if (currentThreadOP && lowerHandle === currentThreadOP.toLowerCase()) {
                 if (article.dataset.linzuSpamHidden) {
                     article.style.display = '';
                     delete article.dataset.linzuSpamHidden;
                 }
                 lastVisibleUser = lowerHandle;
-                globalLastVisibleUser = lastVisibleUser;
                 continue;
             }
 
-            // --- 【ルール②：初登場ユーザーの表示】 ---
-            // そのユーザーIDが mainListSeenUsers にまだ存在しない場合：表示し、リストに追加
-            if (!mainListSeenUsers.has(lowerHandle)) {
-                if (article.dataset.linzuSpamHidden) {
-                    article.style.display = '';
-                    delete article.dataset.linzuSpamHidden;
-                }
-                mainListSeenUsers.set(lowerHandle, new Set([statusId]));
-                lastVisibleUser = lowerHandle;
-                globalLastVisibleUser = lastVisibleUser;
-                continue;
-            }
+            // --- ステップ2：会話のバトンパス（Bさんの救済） ---
+            // Aさん以外のユーザー（Bさん）であっても、「直前の表示者（lastVisibleUser）」と異なる場合は
+            // A-B-A-B のような交互の会話（キャッチボール）とみなして表示を許可する。
+            // ※ Xの「Replying to」DOMテキストが欠落する仕様への最も確実な物理的対策。
+            const isConversation = lastVisibleUser && lastVisibleUser !== lowerHandle;
 
-            // --- 【ルール③：会話チェーン（ABAB）の救済】 ---
-            // 上記に当てはまらない（＝2回目以降）が、「直前の表示者（lastVisibleUser）」への返信である場合：表示
-            const repliedUsers = extractRepliedToUsers(article);
-            const isConversation = lastVisibleUser && lastVisibleUser !== lowerHandle && repliedUsers.has(lastVisibleUser);
-
-            if (isConversation) {
+            // リストに既に存在（2回目以降）だが、会話である場合
+            if (mainListSeenUsers.has(lowerHandle) && isConversation) {
                 if (article.dataset.linzuSpamHidden) {
                     article.style.display = '';
                     delete article.dataset.linzuSpamHidden;
                 }
                 mainListSeenUsers.get(lowerHandle).add(statusId);
                 lastVisibleUser = lowerHandle;
-                globalLastVisibleUser = lastVisibleUser;
                 continue;
             }
 
-            // --- 【ルール④：重複排除】 ---
-            // 上記のいずれにも当てはまらない場合（＝2回目以降の登場で、かつ直前の人への返信でもない）：非表示
-            article.style.display = 'none';
-            article.dataset.linzuSpamHidden = 'true';
+            // --- ステップ3：それ以外の重複は排除 ---
+            // 上記1（親）にも2（直前の人との会話）にも当てはまらない「2回目以降のユーザー」
+            // （例：Bの直後にBが来た連投など）は、理由を問わずすべて非表示にする。
+            if (mainListSeenUsers.has(lowerHandle)) {
+                article.style.display = 'none';
+                article.dataset.linzuSpamHidden = 'true';
+                continue; // ※非表示にした場合はバトン（lastVisibleUser）を更新しない！前の人を保持。
+            }
 
-            // ※非表示にした場合は、lastVisibleUser を更新してはいけません
-            continue;
+            // --- 初登場のユーザー ---
+            if (article.dataset.linzuSpamHidden) {
+                article.style.display = '';
+                delete article.dataset.linzuSpamHidden;
+            }
+            mainListSeenUsers.set(lowerHandle, new Set([statusId]));
+            lastVisibleUser = lowerHandle;
         }
         updateCounterDisplay();
     } catch (e) {}
@@ -886,7 +838,6 @@ function startObserver() {
             currentThreadBaseStatusId = match ? match[1] : null;
 
             mainListSeenUsers.clear();
-            globalLastVisibleUser = null;
             resetSession();
 
             // SPA Full Re-evaluation
