@@ -64,7 +64,7 @@ const hiddenStatusIds = new Set();
 let currentThreadOP = null;
 
 // Global session tracking for thread-specific duplicate filtering
-const seenUserHandles = new Map();
+const mainListSeenUsers = new Map();
 
 // Debounce Timer for Dynamic Filters
 let dynamicFilterTimeout = null;
@@ -438,6 +438,38 @@ function markPermitted(statusId) {
     }
 }
 
+function extractRepliedToUsers(article) {
+    const textEls = article.querySelectorAll('[data-testid="tweetText"]');
+    const mentions = new Set();
+
+    const replyingToEl = article.querySelector('div.r-1d09ksm.r-1471scf.r-1c6vphq, a.r-1wbh5a2.r-dnmrzs.r-1ny4l3l.r-1loqt21');
+    if (replyingToEl && replyingToEl.innerText.includes('@')) {
+        const matches = replyingToEl.innerText.match(/@([\w_]+)/g);
+        if (matches) {
+            matches.forEach(m => mentions.add(m.substring(1).toLowerCase()));
+        }
+    }
+
+    textEls.forEach(el => {
+        const links = el.querySelectorAll('a[role="link"]');
+        links.forEach(link => {
+            if (link.innerText.startsWith('@')) {
+                mentions.add(link.innerText.substring(1).toLowerCase());
+            } else {
+                const srText = link.innerText.match(/@([\w_]+)/);
+                if (srText) mentions.add(srText[1].toLowerCase());
+            }
+        });
+
+        const textMentions = el.innerText.match(/@([\w_]+)/g);
+        if (textMentions) {
+            textMentions.forEach(m => mentions.add(m.substring(1).toLowerCase()));
+        }
+    });
+
+    return mentions;
+}
+
 
 // --- Filtering Logic (Permanent) ---
 
@@ -449,6 +481,7 @@ function applyThreadUserSpamFilter() {
         if (!path.includes('/status/')) return;
 
         const articles = document.querySelectorAll('article[data-testid="tweet"]');
+        let lastVisibleUser = null;
 
         for (const article of articles) {
             // 他のフィルター（重複、bot等）で非表示になったものはスキップ
@@ -469,30 +502,57 @@ function applyThreadUserSpamFilter() {
                     article.style.display = '';
                     delete article.dataset.linzuSpamHidden;
                 }
+
+                // 記録に追加（親が直前ユーザーになることで、親への返信を保護可能）
+                if (!mainListSeenUsers.has(lowerHandle)) {
+                    mainListSeenUsers.set(lowerHandle, new Set());
+                }
+                if (statusId) mainListSeenUsers.get(lowerHandle).add(statusId);
+
+                lastVisibleUser = lowerHandle;
                 continue;
             }
 
             // 2. 既に表示したことがあるユーザーか？
-            if (seenUserHandles.has(lowerHandle)) {
+            if (mainListSeenUsers.has(lowerHandle)) {
                 // 仮想スクロール対策：全く同じツイート（StatusIDが同一）が再描画された場合は表示を許可
-                if (statusId && seenUserHandles.get(lowerHandle) === statusId) {
+                if (statusId && mainListSeenUsers.get(lowerHandle).has(statusId)) {
                     if (article.dataset.linzuSpamHidden) {
                         article.style.display = '';
                         delete article.dataset.linzuSpamHidden;
                     }
+                    lastVisibleUser = lowerHandle; // 既出の許可されたツイートでも、後続のためにコンテキスト更新
                     continue;
                 }
 
-                // 理由を問わず、2回目以降の別投稿は即座に非表示
+                // 例外処理：A-B-A-Bの会話保護ロジック
+                const repliedUsers = extractRepliedToUsers(article);
+                const isConversation = lastVisibleUser && lastVisibleUser !== lowerHandle && repliedUsers.has(lastVisibleUser);
+
+                if (isConversation) {
+                    if (article.dataset.linzuSpamHidden) {
+                        article.style.display = '';
+                        delete article.dataset.linzuSpamHidden;
+                    }
+                    if (statusId) mainListSeenUsers.get(lowerHandle).add(statusId);
+                    lastVisibleUser = lowerHandle;
+                    continue;
+                }
+
+                // 理由を問わず、2回目以降の別投稿（会話ではない）は即座に非表示
                 article.style.display = 'none';
                 article.dataset.linzuSpamHidden = 'true';
+                continue; // 非表示にしたので lastVisibleUser は更新しない
             } else {
                 // 初登場：表示を許可し、IDとStatusIDをリストに追加
                 if (article.dataset.linzuSpamHidden) {
                     article.style.display = '';
                     delete article.dataset.linzuSpamHidden;
                 }
-                seenUserHandles.set(lowerHandle, statusId);
+                mainListSeenUsers.set(lowerHandle, new Set());
+                if (statusId) mainListSeenUsers.get(lowerHandle).add(statusId);
+
+                lastVisibleUser = lowerHandle;
             }
         }
         updateCounterDisplay();
@@ -792,7 +852,7 @@ function startObserver() {
 
     if (location.href !== lastUrl) {
         if (isRealNavigation) {
-            seenUserHandles.clear();
+            mainListSeenUsers.clear();
             isRealNavigation = false; // consume
         }
 
