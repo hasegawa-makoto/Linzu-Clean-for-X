@@ -67,7 +67,6 @@ const threadUserCounts = new Map();
 // Thread OP & Conversation Tracking
 let currentThreadOP = null;
 let threadLastSpeaker = null;
-const threadParentUsers = new Set(); // Users involved in the conversation (e.g. A in A->B->A)
 
 // Debounce Timer for Dynamic Filters
 let dynamicFilterTimeout = null;
@@ -511,10 +510,6 @@ function checkUserSpam(handle, repliedUsers) {
     // We should allow OP freely.
     if (currentThreadOP && handle === currentThreadOP) return false;
 
-    // Conversation Rule 1: Allow users who are established conversation partners
-    // (e.g. the OP of the parent tweet, or users explicitly replied to)
-    if (threadParentUsers.has(handle)) return false;
-
     // Increment global count for this thread session
     const count = (threadUserCounts.get(handle) || 0) + 1;
     threadUserCounts.set(handle, count);
@@ -661,11 +656,8 @@ function processTweet(article) {
 
     const path = window.LINZU_MOCK_PATH || document.body.dataset.linzuMockPath || location.pathname;
 
-    // Extract users this tweet is replying to and add them as conversation partners
+    // Extract users this tweet is replying to (used for checking direct conversational turns)
     const repliedUsers = extractRepliedToUsers(article);
-    repliedUsers.forEach(u => {
-        if (u !== handle) threadParentUsers.add(u);
-    });
 
     // Identify OP (Thread view)
     // In deep links, the top-most main tweet becomes the new OP.
@@ -674,14 +666,8 @@ function processTweet(article) {
         if (urlStatusIdMatch[1] === statusId) {
             // Found the OP of the current page!
             currentThreadOP = handle;
-            threadParentUsers.add(handle);
             markPermittedAndTrackConversation(statusId, handle);
             return;
-        } else if (!currentThreadOP) {
-            // If we are still looking for the OP, then any tweet rendered *above*
-            // the main OP tweet is likely a parent context (the person the OP replied to).
-            // They are part of the conversation too.
-            if (handle) threadParentUsers.add(handle);
         }
     }
 
@@ -751,7 +737,6 @@ function resetSession() {
     threadUserCounts.clear(); // Reset thread frequency
     threadLastSpeaker = null;
     currentThreadOP = null;
-    threadParentUsers.clear();
     lastUrl = location.href;
     updateCounterDisplay();
 }
@@ -772,7 +757,6 @@ function restoreAllVisibility() {
     threadUserCounts.clear();
     threadLastSpeaker = null;
     currentThreadOP = null;
-    threadParentUsers.clear();
 
     updateCounterDisplay();
 }
