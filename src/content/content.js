@@ -44,8 +44,7 @@ let dynamicSettings = {
 };
 
 // Counters (Session Only)
-let localRemovedCount = 0;
-let sessionDynamicHiddenCount = 0;
+let localRemovedCount = 0; // Legacy counter
 
 // URL Tracking for reset
 let lastUrl = location.href;
@@ -61,14 +60,8 @@ const MAX_CACHE_SIZE = 500;
 const permittedStatusIds = new Set();
 const hiddenStatusIds = new Set();
 
-// Thread User Frequency Map (Handle -> Count) for User Spam
-const threadUserCounts = new Map();
-
 // Thread OP Tracking
 let currentThreadOP = null;
-
-// Thread Chronological Display Tracking for User Spam
-let lastVisibleUser = null;
 
 // Debounce Timer for Dynamic Filters
 let dynamicFilterTimeout = null;
@@ -112,8 +105,11 @@ function updateCounterDisplay() {
   try {
     const countDisplay = document.getElementById('linzu-count');
     if (countDisplay) {
-      const total = localRemovedCount + sessionDynamicHiddenCount;
-      countDisplay.textContent = total;
+      // Calculate active hidden nodes based on data attributes
+      const hiddenBase = document.querySelectorAll('article[data-linzu-hidden="true"]').length;
+      const hiddenDynamic = document.querySelectorAll('article[data-linzu-dynamic-hidden="true"]').length;
+      const hiddenSpam = document.querySelectorAll('article[data-linzu-spam-hidden="true"]').length;
+      countDisplay.textContent = hiddenBase + hiddenDynamic + hiddenSpam;
     }
   } catch (e) {
     // Silent fail
@@ -414,45 +410,13 @@ function applyDynamicFilters() {
           }
       }
     });
-    updateCounterDisplay();
+
+    applyThreadUserSpamFilter();
   } catch (e) {}
 }
 
 
 // --- State Helpers ---
-
-function extractRepliedToUsers(article, authorHandle) {
-    const repliedUsers = new Set();
-    try {
-        // 1. Look for explicit "Replying to @username" text blocks
-        const replyInfoElements = article.querySelectorAll('div[dir="ltr"]');
-        for (const el of replyInfoElements) {
-            const text = el.innerText || "";
-            if (text.includes('@')) {
-                const matches = text.match(/@([a-zA-Z0-9_]+)/g);
-                if (matches) {
-                    matches.forEach(m => {
-                        const handle = m.substring(1);
-                        if (handle !== authorHandle) repliedUsers.add(handle);
-                    });
-                }
-            }
-        }
-
-        // 2. Fallback for visually hidden replies (conversational threads via vertical lines)
-        // Extract all visible @ mentions anywhere in the tweet body
-        const allText = article.innerText || "";
-        const matches = allText.match(/@([a-zA-Z0-9_]+)/g);
-        if (matches) {
-             matches.forEach(m => {
-                 const handle = m.substring(1);
-                 if (handle !== authorHandle) repliedUsers.add(handle);
-             });
-        }
-    } catch(e) {}
-    return repliedUsers;
-}
-
 
 function pruneSet(setInstance) {
     if (setInstance.size > MAX_CACHE_SIZE) {
@@ -473,6 +437,56 @@ function markPermitted(statusId) {
 
 
 // --- Filtering Logic (Permanent) ---
+
+function applyThreadUserSpamFilter() {
+    try {
+        if (!appSettings.isEnabled || !appSettings.filterUserSpam || appSettings.licenseStatus !== 'active') return;
+
+        const path = window.LINZU_MOCK_PATH || document.body.dataset.linzuMockPath || location.pathname;
+        if (!path.includes('/status/')) return;
+
+        const articles = document.querySelectorAll('article[data-testid="tweet"]');
+        let lastUser = null;
+
+        for (const article of articles) {
+            // Skip dynamically/permanently hidden tweets by other filters
+            if (article.style.display === 'none' && !article.dataset.linzuSpamHidden) continue;
+
+            // Skip un-processed tweets to ensure baseline filters apply first
+            if (!article.dataset.linzuProcessed) continue;
+
+            const handle = getUsername(article);
+            if (!handle) continue;
+
+            const lowerHandle = handle.toLowerCase();
+
+            // OP is always immune
+            if (currentThreadOP && lowerHandle === currentThreadOP.toLowerCase()) {
+                if (article.dataset.linzuSpamHidden) {
+                    article.style.display = '';
+                    delete article.dataset.linzuSpamHidden;
+                }
+                lastUser = lowerHandle;
+                continue;
+            }
+
+            if (lastUser === lowerHandle) {
+                // Consecutive post by same user -> Hide
+                article.style.display = 'none';
+                article.dataset.linzuSpamHidden = "true";
+            } else {
+                // Different user -> Show, update lastUser
+                if (article.dataset.linzuSpamHidden) {
+                    article.style.display = '';
+                    delete article.dataset.linzuSpamHidden;
+                }
+                lastUser = lowerHandle;
+            }
+        }
+        updateCounterDisplay();
+    } catch (e) {}
+}
+
 
 function removeTweet(article) {
   if (article.style.display === 'none' || article.dataset.linzuHidden === "true") return;
@@ -510,52 +524,6 @@ function checkContentDuplicate(text, statusId) {
 
   seenContent.set(contentKey, statusId);
   return false;
-}
-
-// 2. User Spam Check (Frequency in Thread)
-function checkUserSpam(handle, repliedUsers) {
-    if (!handle) return false;
-
-    // SCOPE LIMITATION: Only run in Thread View (/status/)
-    const path = window.LINZU_MOCK_PATH || document.body.dataset.linzuMockPath || location.pathname;
-    if (!path.includes('/status/')) return false;
-
-    // 1. Absolute OP Protection: The Thread OP is entirely immune to spam filters.
-    if (currentThreadOP && handle === currentThreadOP) return false;
-
-    // Increment global count for this thread session
-    const count = (threadUserCounts.get(handle) || 0) + 1;
-    threadUserCounts.set(handle, count);
-
-    // Hide if 2nd or more
-    if (count > 1) {
-        // Exception Check: Is this a legitimate conversation or self-thread?
-        // We use `lastVisibleUser` to represent the chronological preceding speaker,
-        // bypassing the DOM so it works flawlessly with virtual scrolling.
-
-        if (lastVisibleUser) {
-            if (lastVisibleUser !== handle) {
-                // It's a different person before them. Allow ONLY if this tweet is replying to that person.
-                // This protects A-B-A-B back-and-forth conversations.
-                if (repliedUsers && repliedUsers.has(lastVisibleUser)) {
-                    return false; // Valid A-B-A back-and-forth
-                }
-            } else {
-                // It's the same person before them (lastVisibleUser === handle).
-                // This is a "self-thread". Allow it ONLY if they aren't explicitly replying to someone else.
-                // If they are replying to someone else, but the person before them is themselves,
-                // it means they are spamming multiple independent replies to the parent.
-                if (repliedUsers && repliedUsers.size === 0) {
-                    return false; // Valid self-thread
-                }
-            }
-        }
-
-        // Otherwise, it's an isolated scattered reply (spam)
-        return true;
-    }
-
-    return false;
 }
 
 // 3. Language Check
@@ -684,9 +652,6 @@ function processTweet(article) {
 
     const path = window.LINZU_MOCK_PATH || document.body.dataset.linzuMockPath || location.pathname;
 
-    // Extract users this tweet is replying to (used for checking direct conversational turns)
-    const repliedUsers = extractRepliedToUsers(article, handle);
-
     // Identify OP (Thread view)
     // In deep links, the top-most main tweet becomes the new OP.
     const urlStatusIdMatch = path.match(REGEX_STATUS_ID);
@@ -694,7 +659,6 @@ function processTweet(article) {
         if (urlStatusIdMatch[1] === statusId) {
             // Found the OP of the current page!
             currentThreadOP = handle;
-            lastVisibleUser = handle;
             markPermitted(statusId);
             return;
         }
@@ -711,7 +675,6 @@ function processTweet(article) {
 
         // Split Duplicate Checks
         if (appSettings.filterDuplicateContent && checkContentDuplicate(contentText, statusId)) return true;
-        if (appSettings.filterUserSpam && checkUserSpam(handle, repliedUsers)) return true;
 
         if (appSettings.filterUnverified && checkUnverified(article)) return true;
 
@@ -731,7 +694,6 @@ function processTweet(article) {
         }
         removeTweet(article);
     } else {
-        lastVisibleUser = handle;
         markPermitted(statusId);
     }
 
@@ -759,14 +721,11 @@ function scanNodes(nodes) {
 }
 
 function resetSession() {
-    localRemovedCount = 0;
-    sessionDynamicHiddenCount = 0;
+    localRemovedCount = 0; // Legacy
     seenContent.clear();
     permittedStatusIds.clear();
     hiddenStatusIds.clear();
-    threadUserCounts.clear(); // Reset thread frequency
     currentThreadOP = null;
-    lastVisibleUser = null;
     lastUrl = location.href;
     updateCounterDisplay();
 }
@@ -779,14 +738,13 @@ function restoreAllVisibility() {
         delete article.dataset.linzuDynamicHidden;
         delete article.dataset.linzuProcessed;
         delete article.dataset.linzuChecked;
+        delete article.dataset.linzuSpamHidden;
     });
     // When resetting visibility (e.g., toggle OFF/ON), clear tracking for fair re-eval
     seenContent.clear();
     permittedStatusIds.clear();
     hiddenStatusIds.clear();
-    threadUserCounts.clear();
     currentThreadOP = null;
-    lastVisibleUser = null;
 
     updateCounterDisplay();
 }
@@ -838,6 +796,17 @@ function startObserver() {
         subtree: true
       });
   }
+
+  // 3. Delayed rescan on generic button clicks (e.g. "Show replies", "Show more replies")
+  // Using generic role="button" to be language-independent
+  document.addEventListener('click', (e) => {
+      const btn = e.target.closest('[role="button"], [data-testid="cellInnerDiv"]');
+      if (btn) {
+          setTimeout(() => {
+              if (appSettings.isEnabled) scheduleDynamicFilters();
+          }, 200);
+      }
+  });
 }
 
 // Expose for testing
