@@ -61,10 +61,10 @@ const MAX_CACHE_SIZE = 500;
 const permittedStatusIds = new Set();
 const hiddenStatusIds = new Set();
 
-// Thread User Frequency Map (Handle -> Count) for User Spam
-const threadUserCounts = new Map();
+// Thread Chronological Display Tracking for User Spam
+let lastVisibleUser = null;
 
-// Thread OP & Conversation Tracking
+// Thread OP Tracking
 let currentThreadOP = null;
 
 // Debounce Timer for Dynamic Filters
@@ -418,50 +418,6 @@ function applyDynamicFilters() {
 
 // --- State Helpers ---
 
-function getPreviousTweetAuthor(article) {
-    try {
-        const allArticles = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
-        const index = allArticles.indexOf(article);
-        if (index > 0) {
-            const prevArticle = allArticles[index - 1];
-            return getUsername(prevArticle);
-        }
-    } catch(e) {}
-    return null;
-}
-
-function extractRepliedToUsers(article, authorHandle) {
-    const repliedUsers = new Set();
-    try {
-        // 1. Look for explicit "Replying to @username" text blocks
-        const replyInfoElements = article.querySelectorAll('div[dir="ltr"]');
-        for (const el of replyInfoElements) {
-            const text = el.innerText || "";
-            if (text.includes('@')) {
-                const matches = text.match(/@([a-zA-Z0-9_]+)/g);
-                if (matches) {
-                    matches.forEach(m => {
-                        const handle = m.substring(1);
-                        if (handle !== authorHandle) repliedUsers.add(handle);
-                    });
-                }
-            }
-        }
-
-        // 2. Fallback for visually hidden replies (conversational threads via vertical lines)
-        // Extract all visible @ mentions anywhere in the tweet body
-        const allText = article.innerText || "";
-        const matches = allText.match(/@([a-zA-Z0-9_]+)/g);
-        if (matches) {
-             matches.forEach(m => {
-                 const handle = m.substring(1);
-                 if (handle !== authorHandle) repliedUsers.add(handle);
-             });
-        }
-    } catch(e) {}
-    return repliedUsers;
-}
-
 
 function pruneSet(setInstance) {
     if (setInstance.size > MAX_CACHE_SIZE) {
@@ -522,7 +478,7 @@ function checkContentDuplicate(text, statusId) {
 }
 
 // 2. User Spam Check (Frequency in Thread)
-function checkUserSpam(handle, repliedUsers, article) {
+function checkUserSpam(handle) {
     if (!handle) return false;
 
     // SCOPE LIMITATION: Only run in Thread View (/status/)
@@ -532,25 +488,9 @@ function checkUserSpam(handle, repliedUsers, article) {
     // We should allow OP freely.
     if (currentThreadOP && handle === currentThreadOP) return false;
 
-    // Increment global count for this thread session
-    const count = (threadUserCounts.get(handle) || 0) + 1;
-    threadUserCounts.set(handle, count);
-
-    // Hide if 2nd or more
-    if (count > 1) {
-        // Exception: Is this a direct conversational reply?
-        // Rule: The tweet immediately above this one in the DOM must NOT be authored by the current user,
-        // AND the current user must be replying to that user's handle.
-        const prevAuthor = getPreviousTweetAuthor(article);
-
-        if (prevAuthor && prevAuthor !== handle) {
-            if (repliedUsers && repliedUsers.has(prevAuthor)) {
-                return false; // Valid A-B-A back-and-forth
-            }
-        }
-
-        return true; // Spam
-    }
+    // Hide if this user is exactly the same as the last visible user
+    // This allows A-B-A-B while strictly killing A-A-A
+    if (lastVisibleUser === handle) return true;
 
     return false;
 }
@@ -681,9 +621,6 @@ function processTweet(article) {
 
     const path = window.LINZU_MOCK_PATH || document.body.dataset.linzuMockPath || location.pathname;
 
-    // Extract users this tweet is replying to (used for checking direct conversational turns)
-    const repliedUsers = extractRepliedToUsers(article, handle);
-
     // Identify OP (Thread view)
     // In deep links, the top-most main tweet becomes the new OP.
     const urlStatusIdMatch = path.match(REGEX_STATUS_ID);
@@ -691,6 +628,7 @@ function processTweet(article) {
         if (urlStatusIdMatch[1] === statusId) {
             // Found the OP of the current page!
             currentThreadOP = handle;
+            lastVisibleUser = handle; // OP is visible
             markPermitted(statusId);
             return;
         }
@@ -707,7 +645,7 @@ function processTweet(article) {
 
         // Split Duplicate Checks
         if (appSettings.filterDuplicateContent && checkContentDuplicate(contentText, statusId)) return true;
-        if (appSettings.filterUserSpam && checkUserSpam(handle, repliedUsers, article)) return true;
+        if (appSettings.filterUserSpam && checkUserSpam(handle)) return true;
 
         if (appSettings.filterUnverified && checkUnverified(article)) return true;
 
@@ -727,6 +665,7 @@ function processTweet(article) {
         }
         removeTweet(article);
     } else {
+        lastVisibleUser = handle; // Track successful display
         markPermitted(statusId);
     }
 
@@ -759,8 +698,8 @@ function resetSession() {
     seenContent.clear();
     permittedStatusIds.clear();
     hiddenStatusIds.clear();
-    threadUserCounts.clear(); // Reset thread frequency
     currentThreadOP = null;
+    lastVisibleUser = null;
     lastUrl = location.href;
     updateCounterDisplay();
 }
@@ -778,8 +717,8 @@ function restoreAllVisibility() {
     seenContent.clear();
     permittedStatusIds.clear();
     hiddenStatusIds.clear();
-    threadUserCounts.clear();
     currentThreadOP = null;
+    lastVisibleUser = null;
 
     updateCounterDisplay();
 }
