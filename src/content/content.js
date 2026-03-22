@@ -672,8 +672,14 @@ function checkBotDefaultIcon(article) {
 function checkBotEmoji(article) {
     const tweetTextNode = article.querySelector('div[data-testid="tweetText"]');
     const contentText = tweetTextNode ? tweetTextNode.innerText.trim() : "";
-    if (tweetTextNode) {
-        if (contentText.length > 0 && contentText.length <= 3) return true;
+    if (tweetTextNode && contentText.length > 0) {
+        // 通常の文字（英数字、ひらがな、カタカナ、漢字）が含まれているか判定
+        const hasLetters = /[a-zA-Z0-9ぁ-んァ-ヶｱ-ﾝﾞﾟ一-龠]/.test(contentText);
+
+        // 「3文字以下」かつ「通常の文字が含まれない（絵文字や記号のみ）」場合にボットと判定
+        if (contentText.length <= 3 && !hasLetters) {
+            return true;
+        }
     }
     return false;
 }
