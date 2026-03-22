@@ -474,7 +474,6 @@ function applyThreadUserSpamFilter() {
                 sessionSeenUsers.add(lowerHandle);
                 if (statusId) {
                     threadSpamAllowedStatusIds.add(statusId);
-                    pruneSet(threadSpamAllowedStatusIds);
                 }
                 continue;
             }
@@ -501,7 +500,6 @@ function applyThreadUserSpamFilter() {
                 article.dataset.linzuSpamHidden = 'true';
                 if (statusId) {
                     threadSpamHiddenStatusIds.add(statusId);
-                    pruneSet(threadSpamHiddenStatusIds);
                 }
                 continue;
             }
@@ -514,7 +512,6 @@ function applyThreadUserSpamFilter() {
             sessionSeenUsers.add(lowerHandle);
             if (statusId) {
                 threadSpamAllowedStatusIds.add(statusId);
-                pruneSet(threadSpamAllowedStatusIds);
             }
         }
         updateCounterDisplay();
@@ -760,9 +757,6 @@ function resetSession() {
     permittedStatusIds.clear();
     hiddenStatusIds.clear();
     currentThreadOP = null;
-    sessionSeenUsers.clear();
-    threadSpamAllowedStatusIds.clear();
-    threadSpamHiddenStatusIds.clear();
     lastUrl = location.href;
     updateCounterDisplay();
 }
@@ -782,9 +776,6 @@ function restoreAllVisibility() {
     permittedStatusIds.clear();
     hiddenStatusIds.clear();
     currentThreadOP = null;
-    sessionSeenUsers.clear();
-    threadSpamAllowedStatusIds.clear();
-    threadSpamHiddenStatusIds.clear();
 
     updateCounterDisplay();
 }
@@ -800,6 +791,18 @@ LinzuI18n.init(() => {
   });
 });
 
+let isRealNavigation = false;
+
+window.addEventListener('popstate', () => {
+    isRealNavigation = true;
+    setTimeout(() => isRealNavigation = false, 2000);
+});
+
+document.addEventListener('click', () => {
+    isRealNavigation = true;
+    setTimeout(() => isRealNavigation = false, 2000);
+});
+
 function startObserver() {
   if (observer) observer.disconnect();
 
@@ -807,6 +810,13 @@ function startObserver() {
     if (!appSettings.isEnabled) return;
 
     if (location.href !== lastUrl) {
+        if (isRealNavigation) {
+            sessionSeenUsers.clear();
+            threadSpamAllowedStatusIds.clear();
+            threadSpamHiddenStatusIds.clear();
+            isRealNavigation = false; // consume
+        }
+
         resetSession();
         // SPA Full Re-evaluation
         // Ensure all tweets on the newly rendered page are properly processed
