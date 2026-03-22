@@ -419,19 +419,36 @@ function applyDynamicFilters() {
 
 // --- State Helpers ---
 
-function extractRepliedToUsers(article) {
+function extractRepliedToUsers(article, authorHandle) {
     const repliedUsers = new Set();
     try {
-        // Look for the "Replying to @username" text area, which is typically before the main text
+        // 1. Look for explicit "Replying to @username" text blocks
         const replyInfoElements = article.querySelectorAll('div[dir="ltr"]');
         for (const el of replyInfoElements) {
             const text = el.innerText || "";
             if (text.includes('@')) {
                 const matches = text.match(/@([a-zA-Z0-9_]+)/g);
                 if (matches) {
-                    matches.forEach(m => repliedUsers.add(m.substring(1)));
+                    matches.forEach(m => {
+                        const handle = m.substring(1);
+                        if (handle !== authorHandle) repliedUsers.add(handle);
+                    });
                 }
             }
+        }
+
+        // 2. Fallback for visually hidden replies (conversational threads via vertical lines)
+        // Extract all visible @ mentions in the tweet text
+        const tweetTextNode = article.querySelector('div[data-testid="tweetText"]');
+        if (tweetTextNode) {
+             const text = tweetTextNode.innerText || "";
+             const matches = text.match(/@([a-zA-Z0-9_]+)/g);
+             if (matches) {
+                 matches.forEach(m => {
+                     const handle = m.substring(1);
+                     if (handle !== authorHandle) repliedUsers.add(handle);
+                 });
+             }
         }
     } catch(e) {}
     return repliedUsers;
@@ -657,7 +674,7 @@ function processTweet(article) {
     const path = window.LINZU_MOCK_PATH || document.body.dataset.linzuMockPath || location.pathname;
 
     // Extract users this tweet is replying to (used for checking direct conversational turns)
-    const repliedUsers = extractRepliedToUsers(article);
+    const repliedUsers = extractRepliedToUsers(article, handle);
 
     // Identify OP (Thread view)
     // In deep links, the top-most main tweet becomes the new OP.
