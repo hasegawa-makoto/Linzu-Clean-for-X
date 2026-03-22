@@ -64,7 +64,7 @@ const hiddenStatusIds = new Set();
 // Thread User Frequency Map (Handle -> Count) for User Spam
 const threadUserCounts = new Map();
 
-// Thread OP & Conversation Tracking
+// Thread OP Tracking
 let currentThreadOP = null;
 
 // Debounce Timer for Dynamic Filters
@@ -529,7 +529,7 @@ function checkUserSpam(handle, repliedUsers, article) {
     const path = window.LINZU_MOCK_PATH || document.body.dataset.linzuMockPath || location.pathname;
     if (!path.includes('/status/')) return false;
 
-    // We should allow OP freely.
+    // 1. Absolute OP Protection: The Thread OP is entirely immune to spam filters.
     if (currentThreadOP && handle === currentThreadOP) return false;
 
     // Increment global count for this thread session
@@ -538,18 +538,29 @@ function checkUserSpam(handle, repliedUsers, article) {
 
     // Hide if 2nd or more
     if (count > 1) {
-        // Exception: Is this a direct conversational reply?
-        // Rule: The tweet immediately above this one in the DOM must NOT be authored by the current user,
-        // AND the current user must be replying to that user's handle.
+        // Exception Check: Is this a legitimate conversation or self-thread?
         const prevAuthor = getPreviousTweetAuthor(article);
 
-        if (prevAuthor && prevAuthor !== handle) {
-            if (repliedUsers && repliedUsers.has(prevAuthor)) {
-                return false; // Valid A-B-A back-and-forth
+        if (prevAuthor) {
+            if (prevAuthor !== handle) {
+                // It's a different person above them. Allow ONLY if this tweet is replying to that person.
+                // This protects A-B-A-B back-and-forth conversations.
+                if (repliedUsers && repliedUsers.has(prevAuthor)) {
+                    return false; // Valid A-B-A back-and-forth
+                }
+            } else {
+                // It's the same person above them (prevAuthor === handle).
+                // This is a "self-thread". Allow it ONLY if they aren't explicitly replying to someone else.
+                // If they are replying to someone else, but the person above them is themselves,
+                // it means they are spamming multiple independent replies to the parent.
+                if (repliedUsers && repliedUsers.size === 0) {
+                    return false; // Valid self-thread
+                }
             }
         }
 
-        return true; // Spam
+        // Otherwise, it's an isolated scattered reply (spam)
+        return true;
     }
 
     return false;
