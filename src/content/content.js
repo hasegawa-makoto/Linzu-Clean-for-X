@@ -501,7 +501,7 @@ function checkContentDuplicate(text, statusId) {
 }
 
 // 2. User Spam Check (Frequency in Thread)
-function checkUserSpam(handle) {
+function checkUserSpam(handle, repliedUsers) {
     if (!handle) return false;
 
     // SCOPE LIMITATION: Only run in Thread View (/status/)
@@ -515,18 +515,22 @@ function checkUserSpam(handle) {
     // (e.g. the OP of the parent tweet, or users explicitly replied to)
     if (threadParentUsers.has(handle)) return false;
 
-    // Conversation Rule 2: If the speaker changed, reset spam tracking for this thread
-    if (threadLastSpeaker && threadLastSpeaker !== handle) {
-        // Clear counts to permit new back-and-forth
-        threadUserCounts.clear();
-    }
-
-    // Increment count
+    // Increment global count for this thread session
     const count = (threadUserCounts.get(handle) || 0) + 1;
     threadUserCounts.set(handle, count);
 
     // Hide if 2nd or more
-    if (count > 1) return true;
+    if (count > 1) {
+        // Exception: Is this a direct conversational reply?
+        // Rules: The user is directly replying to the immediately preceding speaker AND
+        // the preceding speaker is NOT themselves.
+        if (threadLastSpeaker && threadLastSpeaker !== handle) {
+             if (repliedUsers && repliedUsers.has(threadLastSpeaker)) {
+                  return false; // Allow this conversational turn
+             }
+        }
+        return true; // Spam
+    }
 
     return false;
 }
@@ -692,7 +696,7 @@ function processTweet(article) {
 
         // Split Duplicate Checks
         if (appSettings.filterDuplicateContent && checkContentDuplicate(contentText, statusId)) return true;
-        if (appSettings.filterUserSpam && checkUserSpam(handle)) return true;
+        if (appSettings.filterUserSpam && checkUserSpam(handle, repliedUsers)) return true;
 
         if (appSettings.filterUnverified && checkUnverified(article)) return true;
 
