@@ -440,42 +440,6 @@ function markPermitted(statusId) {
     }
 }
 
-function extractRepliedToUsers(article) {
-    const textEls = article.querySelectorAll('[data-testid="tweetText"]');
-    const mentions = new Set();
-
-    // Sometimes the "Replying to @user" is in a separate element before the text
-    const replyingToEl = article.querySelector('div.r-1d09ksm.r-1471scf.r-1c6vphq, a.r-1wbh5a2.r-dnmrzs.r-1ny4l3l.r-1loqt21');
-    if (replyingToEl && replyingToEl.innerText.includes('@')) {
-        const matches = replyingToEl.innerText.match(/@([\w_]+)/g);
-        if (matches) {
-            matches.forEach(m => mentions.add(m.substring(1).toLowerCase()));
-        }
-    }
-
-    textEls.forEach(el => {
-        // Find visible or hidden links that might be user mentions
-        const links = el.querySelectorAll('a[role="link"]');
-        links.forEach(link => {
-            if (link.innerText.startsWith('@')) {
-                mentions.add(link.innerText.substring(1).toLowerCase());
-            } else {
-                // Sometimes screen reader text has it
-                const srText = link.innerText.match(/@([\w_]+)/);
-                if (srText) mentions.add(srText[1].toLowerCase());
-            }
-        });
-
-        // Also parse plain text just in case
-        const textMentions = el.innerText.match(/@([\w_]+)/g);
-        if (textMentions) {
-            textMentions.forEach(m => mentions.add(m.substring(1).toLowerCase()));
-        }
-    });
-
-    return mentions;
-}
-
 
 // --- Filtering Logic (Permanent) ---
 
@@ -487,7 +451,6 @@ function applyThreadUserSpamFilter() {
         if (!path.includes('/status/')) return;
 
         const articles = document.querySelectorAll('article[data-testid="tweet"]');
-        let lastVisibleUser = null;
 
         for (const article of articles) {
             // Skip dynamically/permanently hidden tweets by other filters (but not by spam filter)
@@ -511,9 +474,7 @@ function applyThreadUserSpamFilter() {
                 sessionSeenUsers.add(lowerHandle);
                 if (statusId) {
                     threadSpamAllowedStatusIds.add(statusId);
-                    pruneSet(threadSpamAllowedStatusIds);
                 }
-                lastVisibleUser = lowerHandle;
                 continue;
             }
 
@@ -524,32 +485,26 @@ function applyThreadUserSpamFilter() {
                         article.style.display = '';
                         delete article.dataset.linzuSpamHidden;
                     }
-                    lastVisibleUser = lowerHandle;
                     continue;
                 }
                 if (threadSpamHiddenStatusIds.has(statusId)) {
                     article.style.display = 'none';
                     article.dataset.linzuSpamHidden = 'true';
-                    continue; // 非表示にしたので lastVisibleUser は更新しない
+                    continue;
                 }
             }
 
-            // 既存の会話保護条件 (変更禁止)
-            const repliedUsers = extractRepliedToUsers(article);
-            const isConversation = lastVisibleUser && lastVisibleUser !== lowerHandle && repliedUsers.has(lastVisibleUser);
-
-            // 2. そのユーザーが すでに表示済みリストに存在し、かつ「既存の会話保護条件」にも当てはまらない 場合、即座に非表示
-            if (sessionSeenUsers.has(lowerHandle) && !isConversation) {
+            // 2. そのユーザーが すでに表示済みリストに存在する場合、即座に非表示
+            if (sessionSeenUsers.has(lowerHandle)) {
                 article.style.display = 'none';
                 article.dataset.linzuSpamHidden = 'true';
                 if (statusId) {
                     threadSpamHiddenStatusIds.add(statusId);
-                    pruneSet(threadSpamHiddenStatusIds);
                 }
-                continue; // 非表示にしたので lastVisibleUser は更新しない
+                continue;
             }
 
-            // 3. 初登場のユーザー、または会話条件に当てはまる場合は、表示してリストに追加する。
+            // 3. 初登場のユーザーは、表示してリストに追加する。
             if (article.dataset.linzuSpamHidden) {
                 article.style.display = '';
                 delete article.dataset.linzuSpamHidden;
@@ -557,9 +512,7 @@ function applyThreadUserSpamFilter() {
             sessionSeenUsers.add(lowerHandle);
             if (statusId) {
                 threadSpamAllowedStatusIds.add(statusId);
-                pruneSet(threadSpamAllowedStatusIds);
             }
-            lastVisibleUser = lowerHandle;
         }
         updateCounterDisplay();
     } catch (e) {}
@@ -804,9 +757,6 @@ function resetSession() {
     permittedStatusIds.clear();
     hiddenStatusIds.clear();
     currentThreadOP = null;
-    sessionSeenUsers.clear();
-    threadSpamAllowedStatusIds.clear();
-    threadSpamHiddenStatusIds.clear();
     lastUrl = location.href;
     updateCounterDisplay();
 }
@@ -826,9 +776,6 @@ function restoreAllVisibility() {
     permittedStatusIds.clear();
     hiddenStatusIds.clear();
     currentThreadOP = null;
-    sessionSeenUsers.clear();
-    threadSpamAllowedStatusIds.clear();
-    threadSpamHiddenStatusIds.clear();
 
     updateCounterDisplay();
 }
@@ -844,6 +791,18 @@ LinzuI18n.init(() => {
   });
 });
 
+let isRealNavigation = false;
+
+window.addEventListener('popstate', () => {
+    isRealNavigation = true;
+    setTimeout(() => isRealNavigation = false, 2000);
+});
+
+document.addEventListener('click', () => {
+    isRealNavigation = true;
+    setTimeout(() => isRealNavigation = false, 2000);
+});
+
 function startObserver() {
   if (observer) observer.disconnect();
 
@@ -851,6 +810,13 @@ function startObserver() {
     if (!appSettings.isEnabled) return;
 
     if (location.href !== lastUrl) {
+        if (isRealNavigation) {
+            sessionSeenUsers.clear();
+            threadSpamAllowedStatusIds.clear();
+            threadSpamHiddenStatusIds.clear();
+            isRealNavigation = false; // consume
+        }
+
         resetSession();
         // SPA Full Re-evaluation
         // Ensure all tweets on the newly rendered page are properly processed
