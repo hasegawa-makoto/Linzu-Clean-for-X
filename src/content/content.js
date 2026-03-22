@@ -439,33 +439,37 @@ function markPermitted(statusId) {
 }
 
 function extractRepliedToUsers(article) {
-    const textEls = article.querySelectorAll('[data-testid="tweetText"]');
     const mentions = new Set();
 
-    const replyingToEl = article.querySelector('div.r-1d09ksm.r-1471scf.r-1c6vphq, a.r-1wbh5a2.r-dnmrzs.r-1ny4l3l.r-1loqt21');
-    if (replyingToEl && replyingToEl.innerText.includes('@')) {
-        const matches = replyingToEl.innerText.match(/@([\w_]+)/g);
-        if (matches) {
-            matches.forEach(m => mentions.add(m.substring(1).toLowerCase()));
-        }
-    }
-
-    textEls.forEach(el => {
-        const links = el.querySelectorAll('a[role="link"]');
-        links.forEach(link => {
-            if (link.innerText.startsWith('@')) {
-                mentions.add(link.innerText.substring(1).toLowerCase());
-            } else {
-                const srText = link.innerText.match(/@([\w_]+)/);
-                if (srText) mentions.add(srText[1].toLowerCase());
+    // 1. Look for visible user mentions (links starting with @)
+    const links = article.querySelectorAll('a[role="link"]');
+    links.forEach(link => {
+        const text = link.innerText.trim();
+        if (text.startsWith('@')) {
+            mentions.add(text.substring(1).toLowerCase());
+        } else {
+            // "Replying to @username" text inside links
+            const match = text.match(/@([\w_]+)/);
+            if (match) {
+                mentions.add(match[1].toLowerCase());
             }
-        });
+        }
 
-        const textMentions = el.innerText.match(/@([\w_]+)/g);
-        if (textMentions) {
-            textMentions.forEach(m => mentions.add(m.substring(1).toLowerCase()));
+        // Also check href as a fallback for mentions hidden by CSS
+        const hrefMatch = link.getAttribute('href')?.match(/^\/([\w_]+)$/);
+        // Exclude generic paths
+        if (hrefMatch && !['home', 'explore', 'notifications', 'messages'].includes(hrefMatch[1].toLowerCase())) {
+            mentions.add(hrefMatch[1].toLowerCase());
         }
     });
+
+    // 2. Fallback to parsing all raw text content in the article
+    // This perfectly captures "Replying to @username" regardless of CSS classes
+    const allText = article.innerText || "";
+    const allMatches = allText.match(/@([\w_]+)/g);
+    if (allMatches) {
+        allMatches.forEach(m => mentions.add(m.substring(1).toLowerCase()));
+    }
 
     return mentions;
 }
@@ -859,15 +863,18 @@ function startObserver() {
     if (location.href !== lastUrl) {
         if (isRealNavigation) {
             mainListSeenUsers.clear();
+            resetSession();
+
+            // SPA Full Re-evaluation
+            // Ensure all tweets on the newly rendered page are properly processed
+            restoreAllVisibility();
+            const articles = document.querySelectorAll('article[data-testid="tweet"]');
+            scanNodes(articles);
+
             isRealNavigation = false; // consume
         }
-
-        resetSession();
-        // SPA Full Re-evaluation
-        // Ensure all tweets on the newly rendered page are properly processed
-        restoreAllVisibility();
-        const articles = document.querySelectorAll('article[data-testid="tweet"]');
-        scanNodes(articles);
+        // Always update lastUrl to stop looping, but only reset context if it was a real navigation
+        lastUrl = location.href;
     }
 
     const addedNodes = [];
