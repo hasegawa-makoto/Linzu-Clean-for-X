@@ -62,6 +62,10 @@ const hiddenStatusIds = new Set();
 
 // Thread OP Tracking
 let currentThreadOP = null;
+let currentThreadBaseStatusId = (() => {
+    const match = location.pathname.match(/\/status\/(\d+)/);
+    return match ? match[1] : null;
+})();
 
 // Global session tracking for thread-specific duplicate filtering
 const mainListSeenUsers = new Map();
@@ -296,6 +300,26 @@ function loadSettings(callback) {
 
 // --- Logic Helpers ---
 
+function getReplyTargets(article) {
+    const targets = new Set();
+    try {
+        const text = article.textContent || "";
+        // 「Replying to @user」や「返信先: @user」を抽出
+        const match = text.match(/(?:Replying to|返信先:\s*)@([a-zA-Z0-9_]+)/i);
+        if (match) targets.add(match[1].toLowerCase());
+
+        // DOM内のメンションリンクを抽出
+        const links = article.querySelectorAll('a[href^="/"]');
+        for (let link of links) {
+            const linkText = link.textContent.trim();
+            if (linkText.startsWith('@')) {
+                targets.add(linkText.substring(1).toLowerCase());
+            }
+        }
+    } catch(e) {}
+    return targets;
+}
+
 function getUsername(article) {
   try {
     const userNameDiv = article.querySelector('[data-testid="User-Name"]');
@@ -438,38 +462,6 @@ function markPermitted(statusId) {
     }
 }
 
-function extractRepliedToUsers(article) {
-    const textEls = article.querySelectorAll('[data-testid="tweetText"]');
-    const mentions = new Set();
-
-    const replyingToEl = article.querySelector('div.r-1d09ksm.r-1471scf.r-1c6vphq, a.r-1wbh5a2.r-dnmrzs.r-1ny4l3l.r-1loqt21');
-    if (replyingToEl && replyingToEl.innerText.includes('@')) {
-        const matches = replyingToEl.innerText.match(/@([\w_]+)/g);
-        if (matches) {
-            matches.forEach(m => mentions.add(m.substring(1).toLowerCase()));
-        }
-    }
-
-    textEls.forEach(el => {
-        const links = el.querySelectorAll('a[role="link"]');
-        links.forEach(link => {
-            if (link.innerText.startsWith('@')) {
-                mentions.add(link.innerText.substring(1).toLowerCase());
-            } else {
-                const srText = link.innerText.match(/@([\w_]+)/);
-                if (srText) mentions.add(srText[1].toLowerCase());
-            }
-        });
-
-        const textMentions = el.innerText.match(/@([\w_]+)/g);
-        if (textMentions) {
-            textMentions.forEach(m => mentions.add(m.substring(1).toLowerCase()));
-        }
-    });
-
-    return mentions;
-}
-
 // --- Filtering Logic (Permanent) ---
 
 function applyThreadUserSpamFilter() {
@@ -480,10 +472,13 @@ function applyThreadUserSpamFilter() {
         if (!path.includes('/status/')) return;
 
         const articles = document.querySelectorAll('article[data-testid="tweet"]');
-        let lastVisibleUser = null;
+
+        // 画面上部がスクロールアウトした際に、暗黙の文脈としてスレッド主を初期値とする。
+        // これにより、DOMを上から下へスキャンするだけで「返信を表示」などの新階層にも自然に対応できる。
+        let lastVisibleUser = currentThreadOP ? currentThreadOP.toLowerCase() : null;
 
         for (const article of articles) {
-            // 既に非表示（別フィルター）ならスキップ
+            // 既に非表示（別フィルター）ならスキップ（非表示要素は直前のユーザーとしてカウントしない）
             if (article.style.display === 'none' && !article.dataset.linzuSpamHidden) continue;
 
             // 未処理ならスキップ
@@ -493,69 +488,74 @@ function applyThreadUserSpamFilter() {
             if (!handle) continue;
 
             const lowerHandle = handle.toLowerCase();
-            const statusId = getStatusId(article);
 
-            // 【最優先：ルール1】投稿主(A)の保護
-            // スレッドの親は、過去に何度登場していようが、何番目であろうが、必ず「表示」する絶対聖域
+            // ステータスIDが取得できない場合（読み込み中等）の対策
+            let statusId = getStatusId(article);
+            if (!statusId) {
+                if (article.dataset.linzuTempId) {
+                    statusId = article.dataset.linzuTempId;
+                } else {
+                    statusId = 'temp-' + Math.random().toString(36).substr(2, 9);
+                    article.dataset.linzuTempId = statusId;
+                }
+            }
+
+            // 【仮想スクロール保護】
+            // 既に表示許可済みとしてリストに登録されている要素は、再評価をスキップして表示を維持
+            if (mainListSeenUsers.has(lowerHandle) && mainListSeenUsers.get(lowerHandle).has(statusId)) {
+                if (article.dataset.linzuSpamHidden) {
+                    article.style.display = '';
+                    delete article.dataset.linzuSpamHidden;
+                }
+                lastVisibleUser = lowerHandle; // 許可された要素なのでバトンを渡す
+                continue;
+            }
+
+            // --- ステップ1：投稿主（Aさん）は無条件合格 ---
             if (currentThreadOP && lowerHandle === currentThreadOP.toLowerCase()) {
                 if (article.dataset.linzuSpamHidden) {
                     article.style.display = '';
                     delete article.dataset.linzuSpamHidden;
                 }
-
-                // 後続の会話チェーンの基準となるよう記録に追加
-                if (!mainListSeenUsers.has(lowerHandle)) {
-                    mainListSeenUsers.set(lowerHandle, new Set());
-                }
-                if (statusId) mainListSeenUsers.get(lowerHandle).add(statusId);
-
                 lastVisibleUser = lowerHandle;
-                continue; // これ以降のルールを無視
+                continue;
             }
 
-            // すでに表示したことがあるか（ルール2・ルール3への分岐）
-            if (mainListSeenUsers.has(lowerHandle)) {
-                // 仮想スクロール対策：全く同じツイート（StatusIDが同一）が再描画された場合はそのまま表示を継続
-                if (statusId && mainListSeenUsers.get(lowerHandle).has(statusId)) {
-                    if (article.dataset.linzuSpamHidden) {
-                        article.style.display = '';
-                        delete article.dataset.linzuSpamHidden;
-                    }
-                    lastVisibleUser = lowerHandle;
-                    continue;
-                }
-
-                // 【ルール2：会話の継続】
-                // 直前の表示されている投稿者に対する直接の返信である場合は、会話として表示する
-                const repliedUsers = extractRepliedToUsers(article);
-                const isConversation = lastVisibleUser && lastVisibleUser !== lowerHandle && repliedUsers.has(lastVisibleUser);
-
-                if (isConversation) {
-                    if (article.dataset.linzuSpamHidden) {
-                        article.style.display = '';
-                        delete article.dataset.linzuSpamHidden;
-                    }
-                    if (statusId) mainListSeenUsers.get(lowerHandle).add(statusId);
-                    lastVisibleUser = lowerHandle;
-                    continue; // これ以降のルールを無視
-                }
-
-                // 【ルール3：重複の排除】
-                // ルール1にもルール2にも当てはまらない、脈絡のない2回目以降の登場は非表示にする
-                article.style.display = 'none';
-                article.dataset.linzuSpamHidden = 'true';
-                continue; // 非表示にしたので lastVisibleUser は更新しない
-            } else {
-                // 初登場：表示を許可し、IDとStatusIDをリストに追加
+            // --- ステップ2：初登場のユーザーは無条件合格 ---
+            if (!mainListSeenUsers.has(lowerHandle)) {
                 if (article.dataset.linzuSpamHidden) {
                     article.style.display = '';
                     delete article.dataset.linzuSpamHidden;
                 }
-                mainListSeenUsers.set(lowerHandle, new Set());
-                if (statusId) mainListSeenUsers.get(lowerHandle).add(statusId);
-
+                mainListSeenUsers.set(lowerHandle, new Set([statusId]));
                 lastVisibleUser = lowerHandle;
+                continue;
             }
+
+            // --- ステップ3：会話チェーン（ABAB）の厳格な救済 ---
+            // 2回目以降の登場だが、「正当な会話」として許可する条件
+            // 条件A: 直前の人が「スレッド主(OP)」である（A->B->A->B の連続性を保護）
+            // 条件B: このツイートの「返信先」に、直前の表示者(lastVisibleUser)が含まれている
+            const replyTargets = getReplyTargets(article);
+            const isReplyToOP = currentThreadOP && lastVisibleUser === currentThreadOP.toLowerCase();
+            const isDirectReplyToLast = lastVisibleUser && replyTargets.has(lastVisibleUser);
+
+            if (isReplyToOP || isDirectReplyToLast) {
+                if (article.dataset.linzuSpamHidden) {
+                    article.style.display = '';
+                    delete article.dataset.linzuSpamHidden;
+                }
+                mainListSeenUsers.get(lowerHandle).add(statusId);
+                lastVisibleUser = lowerHandle;
+                continue;
+            }
+
+            // --- ステップ4：それ以外の重複（連投・散発スパム）はすべて排除 ---
+            // Caleb -> Kiki -> Caleb のようにターゲットが一致しない2回目以降は非表示
+            article.style.display = 'none';
+            article.dataset.linzuSpamHidden = 'true';
+            // ※【重要】非表示にした場合は lastVisibleUser を更新しない（前の人を保持）
+            continue;
         }
         updateCounterDisplay();
     } catch (e) {}
@@ -690,6 +690,11 @@ function processTweet(article) {
   try {
     // 1. Already Processed? (Early Exit)
     if (article.dataset.linzuProcessed) return;
+
+    // スケルトンロード対策：StatusIDがまだ取得できない（DOM描画途中）場合はスキップし、再評価を待つ
+    const statusId = getStatusId(article);
+    if (!statusId) return;
+
     article.dataset.linzuProcessed = "true";
 
     // License Gate (Strict Mode)
@@ -697,7 +702,13 @@ function processTweet(article) {
     if (appSettings.licenseStatus !== 'active') return;
 
     const handle = getUsername(article);
-    const statusId = getStatusId(article);
+
+    // Identify OP (Thread view) FIRST to ensure absolute OP protection
+    // ナビゲーション時に取得した「真の親スレッドID」と一致する場合のみ、OPとして確定させる
+    // スクロールによるURLの動的変更に引きずられないようにする
+    if (currentThreadBaseStatusId && currentThreadBaseStatusId === statusId) {
+        currentThreadOP = handle;
+    }
 
     // --- Virtual Scroll Absolute Protection ---
     // If we've already permitted this exact status ID in this session, skip ALL checks
@@ -723,20 +734,6 @@ function processTweet(article) {
     // Pre-calculations
     const tweetTextNode = article.querySelector('div[data-testid="tweetText"]');
     const contentText = tweetTextNode ? tweetTextNode.innerText : (article.innerText || "");
-
-    const path = window.LINZU_MOCK_PATH || document.body.dataset.linzuMockPath || location.pathname;
-
-    // Identify OP (Thread view)
-    // In deep links, the top-most main tweet becomes the new OP.
-    const urlStatusIdMatch = path.match(REGEX_STATUS_ID);
-    if (urlStatusIdMatch && urlStatusIdMatch[1]) {
-        if (urlStatusIdMatch[1] === statusId) {
-            // Found the OP of the current page!
-            currentThreadOP = handle;
-            markPermitted(statusId);
-            return;
-        }
-    }
 
     // Filter Checks (Strict Gating)
     const runFilters = () => {
@@ -858,16 +855,23 @@ function startObserver() {
 
     if (location.href !== lastUrl) {
         if (isRealNavigation) {
+            // 真のナビゲーション時のみ、新しいスレッドの親IDをロックする
+            const match = location.pathname.match(/\/status\/(\d+)/);
+            currentThreadBaseStatusId = match ? match[1] : null;
+
             mainListSeenUsers.clear();
+            resetSession();
+
+            // SPA Full Re-evaluation
+            // Ensure all tweets on the newly rendered page are properly processed
+            restoreAllVisibility();
+            const articles = document.querySelectorAll('article[data-testid="tweet"]');
+            scanNodes(articles);
+
             isRealNavigation = false; // consume
         }
-
-        resetSession();
-        // SPA Full Re-evaluation
-        // Ensure all tweets on the newly rendered page are properly processed
-        restoreAllVisibility();
-        const articles = document.querySelectorAll('article[data-testid="tweet"]');
-        scanNodes(articles);
+        // Always update lastUrl to stop looping, but only reset context if it was a real navigation
+        lastUrl = location.href;
     }
 
     const addedNodes = [];
