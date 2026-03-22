@@ -62,6 +62,10 @@ const hiddenStatusIds = new Set();
 
 // Thread OP Tracking
 let currentThreadOP = null;
+let currentThreadBaseStatusId = (() => {
+    const match = location.pathname.match(/\/status\/(\d+)/);
+    return match ? match[1] : null;
+})();
 
 // Global session tracking for thread-specific duplicate filtering
 const mainListSeenUsers = new Map();
@@ -719,6 +723,11 @@ function processTweet(article) {
   try {
     // 1. Already Processed? (Early Exit)
     if (article.dataset.linzuProcessed) return;
+
+    // スケルトンロード対策：StatusIDがまだ取得できない（DOM描画途中）場合はスキップし、再評価を待つ
+    const statusId = getStatusId(article);
+    if (!statusId) return;
+
     article.dataset.linzuProcessed = "true";
 
     // License Gate (Strict Mode)
@@ -726,21 +735,12 @@ function processTweet(article) {
     if (appSettings.licenseStatus !== 'active') return;
 
     const handle = getUsername(article);
-    const statusId = getStatusId(article);
-
-    const path = window.LINZU_MOCK_PATH || document.body.dataset.linzuMockPath || location.pathname;
 
     // Identify OP (Thread view) FIRST to ensure absolute OP protection
-    // In deep links, the top-most main tweet becomes the new OP.
-    const urlStatusIdMatch = path.match(REGEX_STATUS_ID);
-    if (urlStatusIdMatch && urlStatusIdMatch[1]) {
-        if (urlStatusIdMatch[1] === statusId) {
-            // Found the OP of the current page!
-            // Do not overwrite it during scroll URL updates, only lock in the first OP
-            if (!currentThreadOP) {
-                currentThreadOP = handle;
-            }
-        }
+    // ナビゲーション時に取得した「真の親スレッドID」と一致する場合のみ、OPとして確定させる
+    // スクロールによるURLの動的変更に引きずられないようにする
+    if (currentThreadBaseStatusId && currentThreadBaseStatusId === statusId) {
+        currentThreadOP = handle;
     }
 
     // --- Virtual Scroll Absolute Protection ---
@@ -888,6 +888,10 @@ function startObserver() {
 
     if (location.href !== lastUrl) {
         if (isRealNavigation) {
+            // 真のナビゲーション時のみ、新しいスレッドの親IDをロックする
+            const match = location.pathname.match(/\/status\/(\d+)/);
+            currentThreadBaseStatusId = match ? match[1] : null;
+
             mainListSeenUsers.clear();
             globalLastVisibleUser = null;
             resetSession();
