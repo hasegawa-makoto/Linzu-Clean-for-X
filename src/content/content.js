@@ -435,6 +435,42 @@ function markPermitted(statusId) {
     }
 }
 
+function extractRepliedToUsers(article) {
+    const textEls = article.querySelectorAll('[data-testid="tweetText"]');
+    const mentions = new Set();
+
+    // Sometimes the "Replying to @user" is in a separate element before the text
+    const replyingToEl = article.querySelector('div.r-1d09ksm.r-1471scf.r-1c6vphq, a.r-1wbh5a2.r-dnmrzs.r-1ny4l3l.r-1loqt21');
+    if (replyingToEl && replyingToEl.innerText.includes('@')) {
+        const matches = replyingToEl.innerText.match(/@([\w_]+)/g);
+        if (matches) {
+            matches.forEach(m => mentions.add(m.substring(1).toLowerCase()));
+        }
+    }
+
+    textEls.forEach(el => {
+        // Find visible or hidden links that might be user mentions
+        const links = el.querySelectorAll('a[role="link"]');
+        links.forEach(link => {
+            if (link.innerText.startsWith('@')) {
+                mentions.add(link.innerText.substring(1).toLowerCase());
+            } else {
+                // Sometimes screen reader text has it
+                const srText = link.innerText.match(/@([\w_]+)/);
+                if (srText) mentions.add(srText[1].toLowerCase());
+            }
+        });
+
+        // Also parse plain text just in case
+        const textMentions = el.innerText.match(/@([\w_]+)/g);
+        if (textMentions) {
+            textMentions.forEach(m => mentions.add(m.substring(1).toLowerCase()));
+        }
+    });
+
+    return mentions;
+}
+
 
 // --- Filtering Logic (Permanent) ---
 
@@ -446,10 +482,11 @@ function applyThreadUserSpamFilter() {
         if (!path.includes('/status/')) return;
 
         const articles = document.querySelectorAll('article[data-testid="tweet"]');
-        let lastUser = null;
+        const seenUsers = new Set();
+        let lastVisibleUser = null;
 
         for (const article of articles) {
-            // Skip dynamically/permanently hidden tweets by other filters
+            // Skip dynamically/permanently hidden tweets by other filters (but not by spam filter)
             if (article.style.display === 'none' && !article.dataset.linzuSpamHidden) continue;
 
             // Skip un-processed tweets to ensure baseline filters apply first
@@ -466,21 +503,37 @@ function applyThreadUserSpamFilter() {
                     article.style.display = '';
                     delete article.dataset.linzuSpamHidden;
                 }
-                lastUser = lowerHandle;
+                seenUsers.add(lowerHandle);
+                lastVisibleUser = lowerHandle;
                 continue;
             }
 
-            if (lastUser === lowerHandle) {
-                // Consecutive post by same user -> Hide
-                article.style.display = 'none';
-                article.dataset.linzuSpamHidden = "true";
+            // If user has already been seen in this thread (2nd+ appearance)
+            if (seenUsers.has(lowerHandle)) {
+                // Check if it's a direct conversation (A-B-A-B)
+                // Meaning: they are replying directly to the user who spoke immediately before them.
+                const repliedUsers = extractRepliedToUsers(article);
+
+                if (lastVisibleUser && lastVisibleUser !== lowerHandle && repliedUsers.has(lastVisibleUser)) {
+                    // Valid A-B-A-B back-and-forth. Allow display.
+                    if (article.dataset.linzuSpamHidden) {
+                        article.style.display = '';
+                        delete article.dataset.linzuSpamHidden;
+                    }
+                    lastVisibleUser = lowerHandle;
+                } else {
+                    // Not a direct reply to the previous speaker, hide it
+                    article.style.display = 'none';
+                    article.dataset.linzuSpamHidden = 'true';
+                }
             } else {
-                // Different user -> Show, update lastUser
+                // First appearance. Allow display.
                 if (article.dataset.linzuSpamHidden) {
                     article.style.display = '';
                     delete article.dataset.linzuSpamHidden;
                 }
-                lastUser = lowerHandle;
+                seenUsers.add(lowerHandle);
+                lastVisibleUser = lowerHandle;
             }
         }
         updateCounterDisplay();
