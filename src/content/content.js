@@ -67,6 +67,9 @@ const threadUserCounts = new Map();
 // Thread OP Tracking
 let currentThreadOP = null;
 
+// Thread Chronological Display Tracking for User Spam
+let lastVisibleUser = null;
+
 // Debounce Timer for Dynamic Filters
 let dynamicFilterTimeout = null;
 
@@ -418,18 +421,6 @@ function applyDynamicFilters() {
 
 // --- State Helpers ---
 
-function getPreviousTweetAuthor(article) {
-    try {
-        const allArticles = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
-        const index = allArticles.indexOf(article);
-        if (index > 0) {
-            const prevArticle = allArticles[index - 1];
-            return getUsername(prevArticle);
-        }
-    } catch(e) {}
-    return null;
-}
-
 function extractRepliedToUsers(article, authorHandle) {
     const repliedUsers = new Set();
     try {
@@ -522,7 +513,7 @@ function checkContentDuplicate(text, statusId) {
 }
 
 // 2. User Spam Check (Frequency in Thread)
-function checkUserSpam(handle, repliedUsers, article) {
+function checkUserSpam(handle, repliedUsers) {
     if (!handle) return false;
 
     // SCOPE LIMITATION: Only run in Thread View (/status/)
@@ -539,19 +530,20 @@ function checkUserSpam(handle, repliedUsers, article) {
     // Hide if 2nd or more
     if (count > 1) {
         // Exception Check: Is this a legitimate conversation or self-thread?
-        const prevAuthor = getPreviousTweetAuthor(article);
+        // We use `lastVisibleUser` to represent the chronological preceding speaker,
+        // bypassing the DOM so it works flawlessly with virtual scrolling.
 
-        if (prevAuthor) {
-            if (prevAuthor !== handle) {
-                // It's a different person above them. Allow ONLY if this tweet is replying to that person.
+        if (lastVisibleUser) {
+            if (lastVisibleUser !== handle) {
+                // It's a different person before them. Allow ONLY if this tweet is replying to that person.
                 // This protects A-B-A-B back-and-forth conversations.
-                if (repliedUsers && repliedUsers.has(prevAuthor)) {
+                if (repliedUsers && repliedUsers.has(lastVisibleUser)) {
                     return false; // Valid A-B-A back-and-forth
                 }
             } else {
-                // It's the same person above them (prevAuthor === handle).
+                // It's the same person before them (lastVisibleUser === handle).
                 // This is a "self-thread". Allow it ONLY if they aren't explicitly replying to someone else.
-                // If they are replying to someone else, but the person above them is themselves,
+                // If they are replying to someone else, but the person before them is themselves,
                 // it means they are spamming multiple independent replies to the parent.
                 if (repliedUsers && repliedUsers.size === 0) {
                     return false; // Valid self-thread
@@ -702,6 +694,7 @@ function processTweet(article) {
         if (urlStatusIdMatch[1] === statusId) {
             // Found the OP of the current page!
             currentThreadOP = handle;
+            lastVisibleUser = handle;
             markPermitted(statusId);
             return;
         }
@@ -718,7 +711,7 @@ function processTweet(article) {
 
         // Split Duplicate Checks
         if (appSettings.filterDuplicateContent && checkContentDuplicate(contentText, statusId)) return true;
-        if (appSettings.filterUserSpam && checkUserSpam(handle, repliedUsers, article)) return true;
+        if (appSettings.filterUserSpam && checkUserSpam(handle, repliedUsers)) return true;
 
         if (appSettings.filterUnverified && checkUnverified(article)) return true;
 
@@ -738,6 +731,7 @@ function processTweet(article) {
         }
         removeTweet(article);
     } else {
+        lastVisibleUser = handle;
         markPermitted(statusId);
     }
 
@@ -772,6 +766,7 @@ function resetSession() {
     hiddenStatusIds.clear();
     threadUserCounts.clear(); // Reset thread frequency
     currentThreadOP = null;
+    lastVisibleUser = null;
     lastUrl = location.href;
     updateCounterDisplay();
 }
@@ -791,6 +786,7 @@ function restoreAllVisibility() {
     hiddenStatusIds.clear();
     threadUserCounts.clear();
     currentThreadOP = null;
+    lastVisibleUser = null;
 
     updateCounterDisplay();
 }
