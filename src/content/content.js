@@ -497,69 +497,88 @@ function applyThreadUserSpamFilter() {
             if (!handle) continue;
 
             const lowerHandle = handle.toLowerCase();
-            const statusId = getStatusId(article);
 
-            // 【最優先：ルール1】投稿主(A)の保護
-            // スレッドの親は、過去に何度登場していようが、何番目であろうが、必ず「表示」する絶対聖域
+            // ステータスIDが取得できない場合（読み込み中等）の対策：一時的なIDを付与して仮想スクロールキャッシュを保護
+            let statusId = getStatusId(article);
+            if (!statusId) {
+                if (article.dataset.linzuTempId) {
+                    statusId = article.dataset.linzuTempId;
+                } else {
+                    statusId = 'temp-' + Math.random().toString(36).substr(2, 9);
+                    article.dataset.linzuTempId = statusId;
+                }
+            }
+
+            // 【判定ステップ1】投稿主（Aさん）の無条件許可
+            // 判定対象のユーザーが「スレッドの親（一番上の投稿主A）」である場合：即座に「表示」を確定
             if (currentThreadOP && lowerHandle === currentThreadOP.toLowerCase()) {
                 if (article.dataset.linzuSpamHidden) {
                     article.style.display = '';
                     delete article.dataset.linzuSpamHidden;
                 }
 
-                // 後続の会話チェーンの基準となるよう記録に追加
+                // 確定後にリストに追加
                 if (!mainListSeenUsers.has(lowerHandle)) {
                     mainListSeenUsers.set(lowerHandle, new Set());
                 }
-                if (statusId) mainListSeenUsers.get(lowerHandle).add(statusId);
+                mainListSeenUsers.get(lowerHandle).add(statusId);
 
                 lastVisibleUser = lowerHandle;
-                continue; // これ以降のルールを無視
+                continue;
             }
 
-            // すでに表示したことがあるか（ルール2・ルール3への分岐）
-            if (mainListSeenUsers.has(lowerHandle)) {
-                // 仮想スクロール対策：全く同じツイート（StatusIDが同一）が再描画された場合はそのまま表示を継続
-                if (statusId && mainListSeenUsers.get(lowerHandle).has(statusId)) {
-                    if (article.dataset.linzuSpamHidden) {
-                        article.style.display = '';
-                        delete article.dataset.linzuSpamHidden;
-                    }
-                    lastVisibleUser = lowerHandle;
-                    continue;
-                }
-
-                // 【ルール2：会話の継続】
-                // 直前の表示されている投稿者に対する直接の返信である場合は、会話として表示する
-                const repliedUsers = extractRepliedToUsers(article);
-                const isConversation = lastVisibleUser && lastVisibleUser !== lowerHandle && repliedUsers.has(lastVisibleUser);
-
-                if (isConversation) {
-                    if (article.dataset.linzuSpamHidden) {
-                        article.style.display = '';
-                        delete article.dataset.linzuSpamHidden;
-                    }
-                    if (statusId) mainListSeenUsers.get(lowerHandle).add(statusId);
-                    lastVisibleUser = lowerHandle;
-                    continue; // これ以降のルールを無視
-                }
-
-                // 【ルール3：重複の排除】
-                // ルール1にもルール2にも当てはまらない、脈絡のない2回目以降の登場は非表示にする
-                article.style.display = 'none';
-                article.dataset.linzuSpamHidden = 'true';
-                continue; // 非表示にしたので lastVisibleUser は更新しない
-            } else {
-                // 初登場：表示を許可し、IDとStatusIDをリストに追加
+            // 【仮想スクロール保護】
+            // 既に「表示」として確定しリストに入っている同じツイート（再描画）はそのまま許可
+            if (mainListSeenUsers.has(lowerHandle) && mainListSeenUsers.get(lowerHandle).has(statusId)) {
                 if (article.dataset.linzuSpamHidden) {
                     article.style.display = '';
                     delete article.dataset.linzuSpamHidden;
                 }
-                mainListSeenUsers.set(lowerHandle, new Set());
-                if (statusId) mainListSeenUsers.get(lowerHandle).add(statusId);
+                lastVisibleUser = lowerHandle;
+                continue;
+            }
+
+            // ----------------------------------------------------
+            // ここから下は、このスレッドにおける「新しい投稿」のみが到達する
+            // ----------------------------------------------------
+
+            // 会話チェック：直前の表示されている投稿者に対する直接の返信か
+            const repliedUsers = extractRepliedToUsers(article);
+            const isConversation = lastVisibleUser && lastVisibleUser !== lowerHandle && repliedUsers.has(lastVisibleUser);
+
+            // 【判定ステップ2】会話（リプライチェーン）の許可
+            // 既に一度表示されているユーザーでも、会話の条件を満たせば「表示」を許可する
+            if (mainListSeenUsers.has(lowerHandle) && isConversation) {
+                if (article.dataset.linzuSpamHidden) {
+                    article.style.display = '';
+                    delete article.dataset.linzuSpamHidden;
+                }
+
+                // 確定後にリストに追加
+                mainListSeenUsers.get(lowerHandle).add(statusId);
 
                 lastVisibleUser = lowerHandle;
+                continue;
             }
+
+            // 【判定ステップ3】重複の最終排除
+            // ステップ1（親）でもステップ2（会話）でもなく、既に一度表示されているユーザーなら非表示
+            if (mainListSeenUsers.has(lowerHandle) && !isConversation) {
+                article.style.display = 'none';
+                article.dataset.linzuSpamHidden = 'true';
+                continue; // 非表示にしたので lastVisibleUser は更新しない
+            }
+
+            // 【初登場のユーザー】
+            // ステップ1,2,3のどれにも当てはまらない新しいユーザー
+            if (article.dataset.linzuSpamHidden) {
+                article.style.display = '';
+                delete article.dataset.linzuSpamHidden;
+            }
+
+            // 確定後にリストに追加
+            mainListSeenUsers.set(lowerHandle, new Set([statusId]));
+            lastVisibleUser = lowerHandle;
         }
         updateCounterDisplay();
     } catch (e) {}
