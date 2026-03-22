@@ -55,14 +55,18 @@ let observer = null;
 
 // Duplicate Detection: Map<TextHash, Set<StatusID>>
 const seenContent = new Map();
-const seenStatusIds = new Set();
 const MAX_CACHE_SIZE = 500;
+
+// Global Permitted/Hidden Status tracking for virtual scrolling
+const permittedStatusIds = new Set();
+const hiddenStatusIds = new Set();
 
 // Thread User Frequency Map (Handle -> Count) for User Spam
 const threadUserCounts = new Map();
 
-// Thread OP Tracking
+// Thread OP & Conversation Tracking
 let currentThreadOP = null;
+let threadLastSpeaker = null;
 
 // Debounce Timer for Dynamic Filters
 let dynamicFilterTimeout = null;
@@ -413,6 +417,29 @@ function applyDynamicFilters() {
 }
 
 
+// --- State Helpers ---
+
+function pruneSet(setInstance) {
+    if (setInstance.size > MAX_CACHE_SIZE) {
+        // Remove oldest half to free up memory while retaining recent
+        const arr = Array.from(setInstance);
+        const toKeep = arr.slice(Math.floor(MAX_CACHE_SIZE / 2));
+        setInstance.clear();
+        toKeep.forEach(item => setInstance.add(item));
+    }
+}
+
+function markPermittedAndTrackConversation(statusId, handle) {
+    if (statusId) {
+        permittedStatusIds.add(statusId);
+        pruneSet(permittedStatusIds);
+    }
+    if (handle) {
+        threadLastSpeaker = handle;
+    }
+}
+
+
 // --- Filtering Logic (Permanent) ---
 
 function removeTweet(article) {
@@ -430,19 +457,26 @@ function checkContentDuplicate(text, statusId) {
   if (!text || text.length < 5) return false;
   if (!statusId) return false;
 
-  if (seenStatusIds.has(statusId)) return false;
-
   const contentKey = text.trim();
-  if (seenContent.has(contentKey)) return true;
 
-  // Memory Management: Prune if too large
-  if (seenStatusIds.size > MAX_CACHE_SIZE) {
-      seenStatusIds.clear();
+  // Is this content already mapped to a DIFFERENT status ID?
+  // If mapped to the SAME status ID, it's just the exact same tweet re-rendered.
+  if (seenContent.has(contentKey)) {
+      const existingStatusId = seenContent.get(contentKey);
+      if (existingStatusId !== statusId) {
+          return true; // Different tweet, same content -> duplicate
+      }
+  }
+
+  // Memory Management: Prune Map if too large
+  if (seenContent.size > MAX_CACHE_SIZE) {
+      const arr = Array.from(seenContent.entries());
+      const toKeep = arr.slice(Math.floor(MAX_CACHE_SIZE / 2));
       seenContent.clear();
+      toKeep.forEach(([k, v]) => seenContent.set(k, v));
   }
 
   seenContent.set(contentKey, statusId);
-  seenStatusIds.add(statusId);
   return false;
 }
 
@@ -452,13 +486,16 @@ function checkUserSpam(handle) {
 
     // SCOPE LIMITATION: Only run in Thread View (/status/)
     const path = window.LINZU_MOCK_PATH || document.body.dataset.linzuMockPath || location.pathname;
-    // console.log(`[Linzu Debug] checkUserSpam handle=${handle} path=${path}`);
     if (!path.includes('/status/')) return false;
 
-    // Only apply if we are in a thread view (OP detected)
-    // Actually, OP detection happens in processTweet.
     // We should allow OP freely.
     if (currentThreadOP && handle === currentThreadOP) return false;
+
+    // Conversation Rule: If the speaker changed, reset spam tracking for this thread
+    if (threadLastSpeaker && threadLastSpeaker !== handle) {
+        // Clear counts to permit new back-and-forth
+        threadUserCounts.clear();
+    }
 
     // Increment count
     const count = (threadUserCounts.get(handle) || 0) + 1;
@@ -569,9 +606,26 @@ function processTweet(article) {
     const handle = getUsername(article);
     const statusId = getStatusId(article);
 
+    // --- Virtual Scroll Absolute Protection ---
+    // If we've already permitted this exact status ID in this session, skip ALL checks
+    if (statusId && permittedStatusIds.has(statusId)) {
+        if (article.style.display === 'none') article.style.display = '';
+        markPermittedAndTrackConversation(statusId, handle);
+        return;
+    }
+
+    // If we've already hidden this exact status ID, hide it silently
+    if (statusId && hiddenStatusIds.has(statusId)) {
+        removeTweet(article);
+        return;
+    }
+
     // 2. Absolute Privilege (Owner)
     const currentProfileOwner = getCurrentProfileOwner();
-    if (currentProfileOwner && handle === currentProfileOwner) return;
+    if (currentProfileOwner && handle === currentProfileOwner) {
+        markPermittedAndTrackConversation(statusId, handle);
+        return;
+    }
 
     // Pre-calculations
     const tweetTextNode = article.querySelector('div[data-testid="tweetText"]');
@@ -580,37 +634,50 @@ function processTweet(article) {
     const path = window.LINZU_MOCK_PATH || document.body.dataset.linzuMockPath || location.pathname;
 
     // Identify OP (Thread view)
-    if (path.includes('/status/') && !currentThreadOP && statusId) {
-        const urlStatusIdMatch = path.match(REGEX_STATUS_ID);
-        if (urlStatusIdMatch && urlStatusIdMatch[1] === statusId) {
+    // In deep links, the top-most main tweet becomes the new OP.
+    const urlStatusIdMatch = path.match(REGEX_STATUS_ID);
+    if (urlStatusIdMatch && urlStatusIdMatch[1]) {
+        if (urlStatusIdMatch[1] === statusId) {
+            // Found the OP of the current page!
             currentThreadOP = handle;
+            markPermittedAndTrackConversation(statusId, handle);
             return;
         }
     }
 
-    // Skip main tweet
-    const urlStatusIdMatch = path.match(REGEX_STATUS_ID);
-    if (urlStatusIdMatch && urlStatusIdMatch[1] === statusId) return;
-
     // Filter Checks (Strict Gating)
-    if (appSettings.filterBot?.digits && checkBotDigits(handle)) { removeTweet(article); return; }
-    if (appSettings.filterBot?.defaultIcon && checkBotDefaultIcon(article)) { removeTweet(article); return; }
-    if (appSettings.filterBot?.emoji && checkBotEmoji(article)) { removeTweet(article); return; }
-    if (appSettings.filterBot?.links && checkBotLinks(article)) { removeTweet(article); return; }
+    const runFilters = () => {
+        if (appSettings.filterBot?.digits && checkBotDigits(handle)) return true;
+        if (appSettings.filterBot?.defaultIcon && checkBotDefaultIcon(article)) return true;
+        if (appSettings.filterBot?.emoji && checkBotEmoji(article)) return true;
+        if (appSettings.filterBot?.links && checkBotLinks(article)) return true;
 
-    if (appSettings.filterLanguage !== 'all' && checkLanguage(article)) { removeTweet(article); return; }
+        if (appSettings.filterLanguage !== 'all' && checkLanguage(article)) return true;
 
-    // Split Duplicate Checks
-    if (appSettings.filterDuplicateContent && checkContentDuplicate(contentText, statusId)) { removeTweet(article); return; }
-    if (appSettings.filterUserSpam && checkUserSpam(handle)) { removeTweet(article); return; }
+        // Split Duplicate Checks
+        if (appSettings.filterDuplicateContent && checkContentDuplicate(contentText, statusId)) return true;
+        if (appSettings.filterUserSpam && checkUserSpam(handle)) return true;
 
-    if (appSettings.filterUnverified && checkUnverified(article)) { removeTweet(article); return; }
+        if (appSettings.filterUnverified && checkUnverified(article)) return true;
 
-    if (appSettings.filterContent && (appSettings.filterContent.imageOnly || appSettings.filterContent.shortPost || appSettings.filterContent.excessiveLinks)) {
-        if (checkContent(article, contentText, handle)) { removeTweet(article); return; }
+        if (appSettings.filterContent && (appSettings.filterContent.imageOnly || appSettings.filterContent.shortPost || appSettings.filterContent.excessiveLinks)) {
+            if (checkContent(article, contentText, handle)) return true;
+        }
+
+        if (appSettings.customKeywords?.length > 0 && checkCustomKeywords(contentText)) return true;
+
+        return false;
+    };
+
+    if (runFilters()) {
+        if (statusId) {
+            hiddenStatusIds.add(statusId);
+            pruneSet(hiddenStatusIds);
+        }
+        removeTweet(article);
+    } else {
+        markPermittedAndTrackConversation(statusId, handle);
     }
-
-    if (appSettings.customKeywords?.length > 0 && checkCustomKeywords(contentText)) { removeTweet(article); return; }
 
   } catch (e) {}
 }
@@ -639,7 +706,8 @@ function resetSession() {
     localRemovedCount = 0;
     sessionDynamicHiddenCount = 0;
     seenContent.clear();
-    seenStatusIds.clear();
+    permittedStatusIds.clear();
+    hiddenStatusIds.clear();
     threadUserCounts.clear(); // Reset thread frequency
     threadLastSpeaker = null;
     currentThreadOP = null;
@@ -658,8 +726,10 @@ function restoreAllVisibility() {
     });
     // When resetting visibility (e.g., toggle OFF/ON), clear tracking for fair re-eval
     seenContent.clear();
-    seenStatusIds.clear();
+    permittedStatusIds.clear();
+    hiddenStatusIds.clear();
     threadUserCounts.clear();
+    threadLastSpeaker = null;
 
     updateCounterDisplay();
 }
