@@ -509,22 +509,16 @@ function applyThreadUserSpamFilter() {
                 }
             }
 
-            // 【判定ステップ1】投稿主（Aさん）の無条件許可
-            // 判定対象のユーザーが「スレッドの親（一番上の投稿主A）」である場合：即座に「表示」を確定
+            // 【絶対優先：ステップ0】投稿主（A）は「重複」に含まない
+            // 投稿主（Aさん）であれば、即座に「表示」を確定させ、重複チェックリスト（Set）には追加せず処理を終了する
             if (currentThreadOP && lowerHandle === currentThreadOP.toLowerCase()) {
                 if (article.dataset.linzuSpamHidden) {
                     article.style.display = '';
                     delete article.dataset.linzuSpamHidden;
                 }
 
-                // 確定後にリストに追加
-                if (!mainListSeenUsers.has(lowerHandle)) {
-                    mainListSeenUsers.set(lowerHandle, new Set());
-                }
-                mainListSeenUsers.get(lowerHandle).add(statusId);
-
                 lastVisibleUser = lowerHandle;
-                continue;
+                continue; // 下の重複チェックには進ませない
             }
 
             // 【仮想スクロール保護】
@@ -722,6 +716,21 @@ function processTweet(article) {
     const handle = getUsername(article);
     const statusId = getStatusId(article);
 
+    const path = window.LINZU_MOCK_PATH || document.body.dataset.linzuMockPath || location.pathname;
+
+    // Identify OP (Thread view) FIRST to ensure absolute OP protection
+    // In deep links, the top-most main tweet becomes the new OP.
+    const urlStatusIdMatch = path.match(REGEX_STATUS_ID);
+    if (urlStatusIdMatch && urlStatusIdMatch[1]) {
+        if (urlStatusIdMatch[1] === statusId) {
+            // Found the OP of the current page!
+            // Do not overwrite it during scroll URL updates, only lock in the first OP
+            if (!currentThreadOP) {
+                currentThreadOP = handle;
+            }
+        }
+    }
+
     // --- Virtual Scroll Absolute Protection ---
     // If we've already permitted this exact status ID in this session, skip ALL checks
     if (statusId && permittedStatusIds.has(statusId)) {
@@ -746,20 +755,6 @@ function processTweet(article) {
     // Pre-calculations
     const tweetTextNode = article.querySelector('div[data-testid="tweetText"]');
     const contentText = tweetTextNode ? tweetTextNode.innerText : (article.innerText || "");
-
-    const path = window.LINZU_MOCK_PATH || document.body.dataset.linzuMockPath || location.pathname;
-
-    // Identify OP (Thread view)
-    // In deep links, the top-most main tweet becomes the new OP.
-    const urlStatusIdMatch = path.match(REGEX_STATUS_ID);
-    if (urlStatusIdMatch && urlStatusIdMatch[1]) {
-        if (urlStatusIdMatch[1] === statusId) {
-            // Found the OP of the current page!
-            currentThreadOP = handle;
-            markPermitted(statusId);
-            return;
-        }
-    }
 
     // Filter Checks (Strict Gating)
     const runFilters = () => {
