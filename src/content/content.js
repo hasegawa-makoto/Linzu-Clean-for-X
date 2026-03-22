@@ -441,10 +441,11 @@ function markPermitted(statusId) {
 function extractRepliedToUsers(article) {
     const mentions = new Set();
 
-    // 1. Look for visible user mentions (links starting with @)
+    // 1. Look for visible or hidden user mentions (links starting with @)
     const links = article.querySelectorAll('a[role="link"]');
     links.forEach(link => {
-        const text = link.innerText.trim();
+        // textContent catches visually hidden text via CSS (like connecting lines hiding the banner)
+        const text = link.textContent.trim();
         if (text.startsWith('@')) {
             mentions.add(text.substring(1).toLowerCase());
         } else {
@@ -455,17 +456,17 @@ function extractRepliedToUsers(article) {
             }
         }
 
-        // Also check href as a fallback for mentions hidden by CSS
+        // Also check href as a fallback for mentions hidden by CSS entirely
         const hrefMatch = link.getAttribute('href')?.match(/^\/([\w_]+)$/);
         // Exclude generic paths
-        if (hrefMatch && !['home', 'explore', 'notifications', 'messages'].includes(hrefMatch[1].toLowerCase())) {
+        if (hrefMatch && !['home', 'explore', 'notifications', 'messages', 'search'].includes(hrefMatch[1].toLowerCase())) {
             mentions.add(hrefMatch[1].toLowerCase());
         }
     });
 
     // 2. Fallback to parsing all raw text content in the article
-    // This perfectly captures "Replying to @username" regardless of CSS classes
-    const allText = article.innerText || "";
+    // textContent catches hidden visually connected "Replying to" banners perfectly
+    const allText = article.textContent || "";
     const allMatches = allText.match(/@([\w_]+)/g);
     if (allMatches) {
         allMatches.forEach(m => mentions.add(m.substring(1).toLowerCase()));
@@ -509,8 +510,8 @@ function applyThreadUserSpamFilter() {
                 }
             }
 
-            // 【絶対優先：ステップ0】投稿主（A）は「重複」に含まない
-            // 投稿主（Aさん）であれば、即座に「表示」を確定させ、重複チェックリスト（Set）には追加せず処理を終了する
+            // 【判定ステップ1】投稿主（Aさん）の無条件許可
+            // 判定対象のユーザーが「スレッドの親（一番上の投稿主A）」である場合：即座に「表示」を確定し、以下の判定は一切行わない
             if (currentThreadOP && lowerHandle === currentThreadOP.toLowerCase()) {
                 if (article.dataset.linzuSpamHidden) {
                     article.style.display = '';
@@ -518,11 +519,10 @@ function applyThreadUserSpamFilter() {
                 }
 
                 lastVisibleUser = lowerHandle;
-                continue; // 下の重複チェックには進ませない
+                continue; // 以下の判定は一切行わない（リスト追加も不要）
             }
 
-            // 【仮想スクロール保護】
-            // 既に「表示」として確定しリストに入っている同じツイート（再描画）はそのまま許可
+            // 【仮想スクロール保護】（システムの内部処理：前回許可済みの要素は再評価しない）
             if (mainListSeenUsers.has(lowerHandle) && mainListSeenUsers.get(lowerHandle).has(statusId)) {
                 if (article.dataset.linzuSpamHidden) {
                     article.style.display = '';
@@ -533,44 +533,41 @@ function applyThreadUserSpamFilter() {
             }
 
             // ----------------------------------------------------
-            // ここから下は、このスレッドにおける「新しい投稿」のみが到達する
+            // これ以降は「まだ評価されていない新しい投稿」のみ
             // ----------------------------------------------------
 
-            // 会話チェック：直前の表示されている投稿者に対する直接の返信か
             const repliedUsers = extractRepliedToUsers(article);
             const isConversation = lastVisibleUser && lastVisibleUser !== lowerHandle && repliedUsers.has(lastVisibleUser);
 
             // 【判定ステップ2】会話（リプライチェーン）の許可
-            // 既に一度表示されているユーザーでも、会話の条件を満たせば「表示」を許可する
+            // 既に一度表示されている場合でも、直前の投稿者に対する直接の返信である場合は許可
             if (mainListSeenUsers.has(lowerHandle) && isConversation) {
                 if (article.dataset.linzuSpamHidden) {
                     article.style.display = '';
                     delete article.dataset.linzuSpamHidden;
                 }
 
-                // 確定後にリストに追加
+                // 表示が確定した後にリストを更新
                 mainListSeenUsers.get(lowerHandle).add(statusId);
-
                 lastVisibleUser = lowerHandle;
                 continue;
             }
 
             // 【判定ステップ3】重複の最終排除
-            // ステップ1（親）でもステップ2（会話）でもなく、既に一度表示されているユーザーなら非表示
+            // 既に一度表示されている場合で、上記いずれにも当てはまらないなら非表示
             if (mainListSeenUsers.has(lowerHandle) && !isConversation) {
                 article.style.display = 'none';
                 article.dataset.linzuSpamHidden = 'true';
-                continue; // 非表示にしたので lastVisibleUser は更新しない
+                continue; // 非表示要素は lastVisibleUser としてカウントしない
             }
 
-            // 【初登場のユーザー】
-            // ステップ1,2,3のどれにも当てはまらない新しいユーザー
+            // 初登場ユーザーの処理（1,2,3に当てはまらない）
             if (article.dataset.linzuSpamHidden) {
                 article.style.display = '';
                 delete article.dataset.linzuSpamHidden;
             }
 
-            // 確定後にリストに追加
+            // 表示が確定した後にリストを更新
             mainListSeenUsers.set(lowerHandle, new Set([statusId]));
             lastVisibleUser = lowerHandle;
         }
