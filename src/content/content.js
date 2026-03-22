@@ -67,6 +67,7 @@ const threadUserCounts = new Map();
 // Thread OP & Conversation Tracking
 let currentThreadOP = null;
 let threadLastSpeaker = null;
+const threadParentUsers = new Set(); // Users involved in the conversation (e.g. A in A->B->A)
 
 // Debounce Timer for Dynamic Filters
 let dynamicFilterTimeout = null;
@@ -419,6 +420,25 @@ function applyDynamicFilters() {
 
 // --- State Helpers ---
 
+function extractRepliedToUsers(article) {
+    const repliedUsers = new Set();
+    try {
+        // Look for the "Replying to @username" text area, which is typically before the main text
+        const replyInfoElements = article.querySelectorAll('div[dir="ltr"]');
+        for (const el of replyInfoElements) {
+            const text = el.innerText || "";
+            if (text.includes('@')) {
+                const matches = text.match(/@([a-zA-Z0-9_]+)/g);
+                if (matches) {
+                    matches.forEach(m => repliedUsers.add(m.substring(1)));
+                }
+            }
+        }
+    } catch(e) {}
+    return repliedUsers;
+}
+
+
 function pruneSet(setInstance) {
     if (setInstance.size > MAX_CACHE_SIZE) {
         // Remove oldest half to free up memory while retaining recent
@@ -481,7 +501,7 @@ function checkContentDuplicate(text, statusId) {
 }
 
 // 2. User Spam Check (Frequency in Thread)
-function checkUserSpam(handle) {
+function checkUserSpam(handle, repliedUsers) {
     if (!handle) return false;
 
     // SCOPE LIMITATION: Only run in Thread View (/status/)
@@ -491,18 +511,26 @@ function checkUserSpam(handle) {
     // We should allow OP freely.
     if (currentThreadOP && handle === currentThreadOP) return false;
 
-    // Conversation Rule: If the speaker changed, reset spam tracking for this thread
-    if (threadLastSpeaker && threadLastSpeaker !== handle) {
-        // Clear counts to permit new back-and-forth
-        threadUserCounts.clear();
-    }
+    // Conversation Rule 1: Allow users who are established conversation partners
+    // (e.g. the OP of the parent tweet, or users explicitly replied to)
+    if (threadParentUsers.has(handle)) return false;
 
-    // Increment count
+    // Increment global count for this thread session
     const count = (threadUserCounts.get(handle) || 0) + 1;
     threadUserCounts.set(handle, count);
 
     // Hide if 2nd or more
-    if (count > 1) return true;
+    if (count > 1) {
+        // Exception: Is this a direct conversational reply?
+        // Rules: The user is directly replying to the immediately preceding speaker AND
+        // the preceding speaker is NOT themselves.
+        if (threadLastSpeaker && threadLastSpeaker !== handle) {
+             if (repliedUsers && repliedUsers.has(threadLastSpeaker)) {
+                  return false; // Allow this conversational turn
+             }
+        }
+        return true; // Spam
+    }
 
     return false;
 }
@@ -633,6 +661,12 @@ function processTweet(article) {
 
     const path = window.LINZU_MOCK_PATH || document.body.dataset.linzuMockPath || location.pathname;
 
+    // Extract users this tweet is replying to and add them as conversation partners
+    const repliedUsers = extractRepliedToUsers(article);
+    repliedUsers.forEach(u => {
+        if (u !== handle) threadParentUsers.add(u);
+    });
+
     // Identify OP (Thread view)
     // In deep links, the top-most main tweet becomes the new OP.
     const urlStatusIdMatch = path.match(REGEX_STATUS_ID);
@@ -640,8 +674,14 @@ function processTweet(article) {
         if (urlStatusIdMatch[1] === statusId) {
             // Found the OP of the current page!
             currentThreadOP = handle;
+            threadParentUsers.add(handle);
             markPermittedAndTrackConversation(statusId, handle);
             return;
+        } else if (!currentThreadOP) {
+            // If we are still looking for the OP, then any tweet rendered *above*
+            // the main OP tweet is likely a parent context (the person the OP replied to).
+            // They are part of the conversation too.
+            if (handle) threadParentUsers.add(handle);
         }
     }
 
@@ -656,7 +696,7 @@ function processTweet(article) {
 
         // Split Duplicate Checks
         if (appSettings.filterDuplicateContent && checkContentDuplicate(contentText, statusId)) return true;
-        if (appSettings.filterUserSpam && checkUserSpam(handle)) return true;
+        if (appSettings.filterUserSpam && checkUserSpam(handle, repliedUsers)) return true;
 
         if (appSettings.filterUnverified && checkUnverified(article)) return true;
 
@@ -711,6 +751,7 @@ function resetSession() {
     threadUserCounts.clear(); // Reset thread frequency
     threadLastSpeaker = null;
     currentThreadOP = null;
+    threadParentUsers.clear();
     lastUrl = location.href;
     updateCounterDisplay();
 }
@@ -730,6 +771,8 @@ function restoreAllVisibility() {
     hiddenStatusIds.clear();
     threadUserCounts.clear();
     threadLastSpeaker = null;
+    currentThreadOP = null;
+    threadParentUsers.clear();
 
     updateCounterDisplay();
 }
@@ -753,6 +796,11 @@ function startObserver() {
 
     if (location.href !== lastUrl) {
         resetSession();
+        // SPA Full Re-evaluation
+        // Ensure all tweets on the newly rendered page are properly processed
+        restoreAllVisibility();
+        const articles = document.querySelectorAll('article[data-testid="tweet"]');
+        scanNodes(articles);
     }
 
     const addedNodes = [];
