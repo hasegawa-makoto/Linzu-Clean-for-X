@@ -345,7 +345,7 @@ function getCurrentProfileOwner() {
 
 function scheduleDynamicFilters() {
     if (dynamicFilterTimeout) clearTimeout(dynamicFilterTimeout);
-    dynamicFilterTimeout = setTimeout(applyDynamicFilters, 200);
+    dynamicFilterTimeout = setTimeout(applyDynamicFilters, 100);
 }
 
 function applyDynamicFilters() {
@@ -497,7 +497,7 @@ function applyThreadUserSpamFilter() {
 
             const lowerHandle = handle.toLowerCase();
 
-            // OP is always immune
+            // 1. そのユーザーが「スレッド主（親）」であれば、常に表示。
             if (currentThreadOP && lowerHandle === currentThreadOP.toLowerCase()) {
                 if (article.dataset.linzuSpamHidden) {
                     article.style.display = '';
@@ -508,33 +508,24 @@ function applyThreadUserSpamFilter() {
                 continue;
             }
 
-            // If user has already been seen in this thread (2nd+ appearance)
-            if (seenUsers.has(lowerHandle)) {
-                // Check if it's a direct conversation (A-B-A-B)
-                // Meaning: they are replying directly to the user who spoke immediately before them.
-                const repliedUsers = extractRepliedToUsers(article);
+            // 既存の会話保護条件 (変更禁止)
+            const repliedUsers = extractRepliedToUsers(article);
+            const isConversation = lastVisibleUser && lastVisibleUser !== lowerHandle && repliedUsers.has(lastVisibleUser);
 
-                if (lastVisibleUser && lastVisibleUser !== lowerHandle && repliedUsers.has(lastVisibleUser)) {
-                    // Valid A-B-A-B back-and-forth. Allow display.
-                    if (article.dataset.linzuSpamHidden) {
-                        article.style.display = '';
-                        delete article.dataset.linzuSpamHidden;
-                    }
-                    lastVisibleUser = lowerHandle;
-                } else {
-                    // Not a direct reply to the previous speaker, hide it
-                    article.style.display = 'none';
-                    article.dataset.linzuSpamHidden = 'true';
-                }
-            } else {
-                // First appearance. Allow display.
-                if (article.dataset.linzuSpamHidden) {
-                    article.style.display = '';
-                    delete article.dataset.linzuSpamHidden;
-                }
-                seenUsers.add(lowerHandle);
-                lastVisibleUser = lowerHandle;
+            // 2. そのユーザーが すでに表示済みリストに存在し、かつ「既存の会話保護条件」にも当てはまらない 場合、即座に非表示
+            if (seenUsers.has(lowerHandle) && !isConversation) {
+                article.style.display = 'none';
+                article.dataset.linzuSpamHidden = 'true';
+                continue; // 非表示にしたので lastVisibleUser は更新しない
             }
+
+            // 3. 初登場のユーザー、または会話条件に当てはまる場合は、表示してリストに追加する。
+            if (article.dataset.linzuSpamHidden) {
+                article.style.display = '';
+                delete article.dataset.linzuSpamHidden;
+            }
+            seenUsers.add(lowerHandle);
+            lastVisibleUser = lowerHandle;
         }
         updateCounterDisplay();
     } catch (e) {}
