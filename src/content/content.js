@@ -66,7 +66,6 @@ const threadUserCounts = new Map();
 
 // Thread OP & Conversation Tracking
 let currentThreadOP = null;
-let threadLastSpeaker = null;
 
 // Debounce Timer for Dynamic Filters
 let dynamicFilterTimeout = null;
@@ -419,6 +418,18 @@ function applyDynamicFilters() {
 
 // --- State Helpers ---
 
+function getPreviousTweetAuthor(article) {
+    try {
+        const allArticles = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
+        const index = allArticles.indexOf(article);
+        if (index > 0) {
+            const prevArticle = allArticles[index - 1];
+            return getUsername(prevArticle);
+        }
+    } catch(e) {}
+    return null;
+}
+
 function extractRepliedToUsers(article, authorHandle) {
     const repliedUsers = new Set();
     try {
@@ -438,17 +449,14 @@ function extractRepliedToUsers(article, authorHandle) {
         }
 
         // 2. Fallback for visually hidden replies (conversational threads via vertical lines)
-        // Extract all visible @ mentions in the tweet text
-        const tweetTextNode = article.querySelector('div[data-testid="tweetText"]');
-        if (tweetTextNode) {
-             const text = tweetTextNode.innerText || "";
-             const matches = text.match(/@([a-zA-Z0-9_]+)/g);
-             if (matches) {
-                 matches.forEach(m => {
-                     const handle = m.substring(1);
-                     if (handle !== authorHandle) repliedUsers.add(handle);
-                 });
-             }
+        // Extract all visible @ mentions anywhere in the tweet body
+        const allText = article.innerText || "";
+        const matches = allText.match(/@([a-zA-Z0-9_]+)/g);
+        if (matches) {
+             matches.forEach(m => {
+                 const handle = m.substring(1);
+                 if (handle !== authorHandle) repliedUsers.add(handle);
+             });
         }
     } catch(e) {}
     return repliedUsers;
@@ -465,13 +473,10 @@ function pruneSet(setInstance) {
     }
 }
 
-function markPermittedAndTrackConversation(statusId, handle) {
+function markPermitted(statusId) {
     if (statusId) {
         permittedStatusIds.add(statusId);
         pruneSet(permittedStatusIds);
-    }
-    if (handle) {
-        threadLastSpeaker = handle;
     }
 }
 
@@ -517,7 +522,7 @@ function checkContentDuplicate(text, statusId) {
 }
 
 // 2. User Spam Check (Frequency in Thread)
-function checkUserSpam(handle, repliedUsers) {
+function checkUserSpam(handle, repliedUsers, article) {
     if (!handle) return false;
 
     // SCOPE LIMITATION: Only run in Thread View (/status/)
@@ -534,13 +539,16 @@ function checkUserSpam(handle, repliedUsers) {
     // Hide if 2nd or more
     if (count > 1) {
         // Exception: Is this a direct conversational reply?
-        // Rules: The user is directly replying to the immediately preceding speaker AND
-        // the preceding speaker is NOT themselves.
-        if (threadLastSpeaker && threadLastSpeaker !== handle) {
-             if (repliedUsers && repliedUsers.has(threadLastSpeaker)) {
-                  return false; // Allow this conversational turn
-             }
+        // Rule: The tweet immediately above this one in the DOM must NOT be authored by the current user,
+        // AND the current user must be replying to that user's handle.
+        const prevAuthor = getPreviousTweetAuthor(article);
+
+        if (prevAuthor && prevAuthor !== handle) {
+            if (repliedUsers && repliedUsers.has(prevAuthor)) {
+                return false; // Valid A-B-A back-and-forth
+            }
         }
+
         return true; // Spam
     }
 
@@ -650,7 +658,7 @@ function processTweet(article) {
     // If we've already permitted this exact status ID in this session, skip ALL checks
     if (statusId && permittedStatusIds.has(statusId)) {
         if (article.style.display === 'none') article.style.display = '';
-        markPermittedAndTrackConversation(statusId, handle);
+        markPermitted(statusId);
         return;
     }
 
@@ -663,7 +671,7 @@ function processTweet(article) {
     // 2. Absolute Privilege (Owner)
     const currentProfileOwner = getCurrentProfileOwner();
     if (currentProfileOwner && handle === currentProfileOwner) {
-        markPermittedAndTrackConversation(statusId, handle);
+        markPermitted(statusId);
         return;
     }
 
@@ -683,7 +691,7 @@ function processTweet(article) {
         if (urlStatusIdMatch[1] === statusId) {
             // Found the OP of the current page!
             currentThreadOP = handle;
-            markPermittedAndTrackConversation(statusId, handle);
+            markPermitted(statusId);
             return;
         }
     }
@@ -699,7 +707,7 @@ function processTweet(article) {
 
         // Split Duplicate Checks
         if (appSettings.filterDuplicateContent && checkContentDuplicate(contentText, statusId)) return true;
-        if (appSettings.filterUserSpam && checkUserSpam(handle, repliedUsers)) return true;
+        if (appSettings.filterUserSpam && checkUserSpam(handle, repliedUsers, article)) return true;
 
         if (appSettings.filterUnverified && checkUnverified(article)) return true;
 
@@ -719,7 +727,7 @@ function processTweet(article) {
         }
         removeTweet(article);
     } else {
-        markPermittedAndTrackConversation(statusId, handle);
+        markPermitted(statusId);
     }
 
   } catch (e) {}
@@ -752,7 +760,6 @@ function resetSession() {
     permittedStatusIds.clear();
     hiddenStatusIds.clear();
     threadUserCounts.clear(); // Reset thread frequency
-    threadLastSpeaker = null;
     currentThreadOP = null;
     lastUrl = location.href;
     updateCounterDisplay();
@@ -772,7 +779,6 @@ function restoreAllVisibility() {
     permittedStatusIds.clear();
     hiddenStatusIds.clear();
     threadUserCounts.clear();
-    threadLastSpeaker = null;
     currentThreadOP = null;
 
     updateCounterDisplay();
