@@ -1,7 +1,11 @@
 {
   "appName": {
-    "message": "Linzu Clean for X",
+    "message": "Sweeply for X",
     "description": "The name of the application"
+  },
+  "appShortName": {
+    "message": "Sweeply",
+    "description": "The short name of the application"
   },
   "appDesc": {
     "message": "X (x.com) からインプレゾンビ、スパム、ノイズを強力に除去します。",

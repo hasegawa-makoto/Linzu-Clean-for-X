@@ -1,9 +1,9 @@
 // src/background/background.js
-// Service Worker for Linzu Clean for X
+// Service Worker for Sweeply for X
 
 // 1. Initialize default settings on installation
 chrome.runtime.onInstalled.addListener((details) => {
-  console.log('[Linzu Clean] Extension Installed/Updated:', details.reason);
+  console.log('[Sweeply] Extension Installed/Updated:', details.reason);
 
   if (details.reason === 'install') {
     chrome.storage.local.get(null, (items) => {
@@ -47,7 +47,7 @@ chrome.runtime.onInstalled.addListener((details) => {
 
       if (Object.keys(keysToSet).length > 0) {
           chrome.storage.local.set(keysToSet, () => {
-              console.log('[Linzu Clean] Default settings initialized.');
+              console.log('[Sweeply] Default settings initialized.');
           });
       }
 
