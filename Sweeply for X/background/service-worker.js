@@ -1,8 +1,8 @@
-// Service Worker for Linzu Clean for X
-console.log('Linzu Clean for X: Service Worker started');
+// Service Worker for Sweeply for X
+console.log('Sweeply for X: Service Worker started');
 
 chrome.runtime.onInstalled.addListener(() => {
-  console.log('Linzu Clean for X: Installed');
+  console.log('Sweeply for X: Installed');
   chrome.storage.local.set({
     isEnabled: true,
     removedCount: 0,

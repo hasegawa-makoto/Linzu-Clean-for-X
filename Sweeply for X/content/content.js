@@ -1,4 +1,4 @@
-// Linzu Clean for X - Content Script
+// Sweeply for X - Content Script
 
 // Safety: Wrap everything in a try-catch to prevent crashing the page
 try {
@@ -96,7 +96,7 @@ function updateUIText() {
         }
     }
 
-    if (title) title.textContent = LinzuI18n.t('appTitle');
+    if (title) title.textContent = LinzuI18n.t('appShortName');
     if (statsLabel) statsLabel.textContent = LinzuI18n.t('ui_removed');
     if (settingsBtn) settingsBtn.textContent = LinzuI18n.t('ui_settings');
     if (hideBtn) hideBtn.textContent = LinzuI18n.t('ui_hide_panel');
@@ -132,7 +132,7 @@ function injectFloatingUI() {
     uiContainer.className = 'linzu-ignore'; // Mark for observer to ignore
     uiContainer.innerHTML = `
       <div class="linzu-header">
-        <span class="linzu-title">${LinzuI18n.t('appTitle')}</span>
+        <span class="linzu-title">${LinzuI18n.t('appShortName')}</span>
         <label class="linzu-switch">
           <input type="checkbox" id="linzu-toggle">
           <span class="linzu-slider round"></span>

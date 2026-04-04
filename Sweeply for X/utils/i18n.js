@@ -5,7 +5,8 @@ window.LinzuI18n = {
 
   translations: {
     ja: {
-      appTitle: 'Linzu Clean',
+      appTitle: 'Sweeply for X',
+      appShortName: 'Sweeply',
       ui_removed: '除去件数:',
       ui_switch_label: 'ON/OFF',
       ui_settings: '設定',
@@ -63,7 +64,8 @@ window.LinzuI18n = {
       lang_en: 'English'
     },
     en: {
-      appTitle: 'Linzu Clean',
+      appTitle: 'Sweeply for X',
+      appShortName: 'Sweeply',
       ui_removed: 'Removed:',
       ui_switch_label: 'ON/OFF',
       ui_settings: 'Settings',
