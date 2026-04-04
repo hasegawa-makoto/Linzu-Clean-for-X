@@ -46,7 +46,7 @@ window.LinzuI18n = {
       opt_bot_title: 'ボット(ゾンビ)検知',
       opt_bot_digits: 'ID末尾が数字5桁以上のアカウント',
       opt_bot_default_icon: '初期アイコン(画像なし)のアカウント',
-      opt_bot_emoji: '絵文字のみ/3文字以下のリプライ',
+      opt_bot_emoji: '絵文字や記号のみのリプライ',
       opt_bot_links: '外部リンク付きのリプライ',
 
       opt_keywords_title: 'カスタムキーワード',
@@ -104,7 +104,7 @@ window.LinzuI18n = {
       opt_bot_title: 'Bot Detection',
       opt_bot_digits: 'Hide IDs with 5+ trailing digits',
       opt_bot_default_icon: 'Hide Default Icon Users',
-      opt_bot_emoji: 'Hide Emoji-only/Short Replies',
+      opt_bot_emoji: 'Hide Emoji/Symbols-only Replies',
       opt_bot_links: 'Hide Replies with External Links',
 
       opt_keywords_title: 'Custom Keywords',
