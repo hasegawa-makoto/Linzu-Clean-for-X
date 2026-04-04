@@ -618,19 +618,24 @@ function checkContent(article, text, handle) {
 
   if (appSettings.filterContent?.imageOnly) {
      if (!isOP) {
-         // divタグに限定せず、属性だけでメディア（画像・動画）を検知する
-         const hasMedia = article.querySelector('[data-testid="tweetPhoto"], [data-testid="videoPlayer"]');
+         // Xの仕様変更に対応した広範なメディア検知
+         const hasMedia = article.querySelector('[data-testid="tweetPhoto"], [data-testid="videoPlayer"], [data-testid="videoComponent"]');
          const hasTextDiv = article.querySelector('[data-testid="tweetText"]');
-         const postText = hasTextDiv ? hasTextDiv.innerText.trim() : "";
 
-         // テキストが空（無言）で、メディアが存在する場合は「画像/動画のみ」として弾く
-         if (!postText && hasMedia) return true;
+         // テキストを取得し、画像用の隠しリンク（[https://t.co/](https://t.co/)...）を削ぎ落としてから判定する
+         let postText = hasTextDiv ? hasTextDiv.innerText : "";
+         postText = postText.replace(/https?:\/\/\S+/g, '').trim();
+
+         // メディアがあり、かつ実質的なテキストが無い場合は非表示
+         if (hasMedia && postText.length === 0) return true;
      }
   }
 
   if (appSettings.filterContent?.shortPost) {
     const hasTextDiv = article.querySelector('[data-testid="tweetText"]');
-    const postText = hasTextDiv ? hasTextDiv.innerText.trim() : "";
+    let postText = hasTextDiv ? hasTextDiv.innerText : "";
+    // リンクを除外して純粋な文字数のみをカウントする
+    postText = postText.replace(/https?:\/\/\S+/g, '').trim();
     if (hasTextDiv && postText.length > 0 && postText.length <= 5) return true;
   }
 
