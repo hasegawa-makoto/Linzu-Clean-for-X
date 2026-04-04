@@ -613,21 +613,27 @@ function checkLanguage(article) {
 
 // 4. Content Check
 function checkContent(article, text, handle) {
-  const isOP = currentThreadOP && handle === currentThreadOP;
+  // 投稿主の判定を小文字に揃えて安全に比較
+  const isOP = currentThreadOP && handle && handle.toLowerCase() === currentThreadOP.toLowerCase();
 
   if (appSettings.filterContent?.imageOnly) {
      if (!isOP) {
-         const hasTextDiv = article.querySelector('div[data-testid="tweetText"]');
-         const hasMedia = article.querySelector('div[data-testid="tweetPhoto"]') || article.querySelector('div[data-testid="videoPlayer"]');
+         // divタグに限定せず、属性だけでメディア（画像・動画）を検知する
+         const hasMedia = article.querySelector('[data-testid="tweetPhoto"], [data-testid="videoPlayer"]');
+         const hasTextDiv = article.querySelector('[data-testid="tweetText"]');
+         const postText = hasTextDiv ? hasTextDiv.innerText.trim() : "";
 
-         if (!hasTextDiv && hasMedia) return true;
-         if (hasTextDiv && !hasTextDiv.innerText.trim() && hasMedia) return true;
+         // テキストが空（無言）で、メディアが存在する場合は「画像/動画のみ」として弾く
+         if (!postText && hasMedia) return true;
      }
   }
+
   if (appSettings.filterContent?.shortPost) {
-    const hasTextDiv = article.querySelector('div[data-testid="tweetText"]');
-    if (hasTextDiv && text.trim().length > 0 && text.trim().length <= 5) return true;
+    const hasTextDiv = article.querySelector('[data-testid="tweetText"]');
+    const postText = hasTextDiv ? hasTextDiv.innerText.trim() : "";
+    if (hasTextDiv && postText.length > 0 && postText.length <= 5) return true;
   }
+
   if (appSettings.filterContent?.excessiveLinks) {
      const links = (text.match(REGEX_LINKS) || []).length;
      const tags = (text.match(REGEX_HASHTAGS) || []).length;
@@ -670,14 +676,15 @@ function checkBotDefaultIcon(article) {
 }
 
 function checkBotEmoji(article) {
-    const tweetTextNode = article.querySelector('div[data-testid="tweetText"]');
+    const tweetTextNode = article.querySelector('[data-testid="tweetText"]');
     const contentText = tweetTextNode ? tweetTextNode.innerText.trim() : "";
+
     if (tweetTextNode && contentText.length > 0) {
         // 通常の文字（英数字、ひらがな、カタカナ、漢字）が含まれているか判定
         const hasLetters = /[a-zA-Z0-9ぁ-んァ-ヶｱ-ﾝﾞﾟ一-龠]/.test(contentText);
 
-        // 「3文字以下」かつ「通常の文字が含まれない（絵文字や記号のみ）」場合にボットと判定
-        if (contentText.length <= 3 && !hasLetters) {
+        // 文字数に関係なく、通常の文字が含まれていない（絵文字や記号のみ）場合に弾く
+        if (!hasLetters) {
             return true;
         }
     }
