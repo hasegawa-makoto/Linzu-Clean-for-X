@@ -539,9 +539,11 @@ function applyThreadUserSpamFilter() {
             const replyTargets = getReplyTargets(article);
 
             // 修正：lastVisibleUserの有無に関わらず、OPへの直接リプライなら救済する
+            // 追加：主役ツイートの直下（lastVisibleUser === OP）は宛先が省略されるため暗黙のリプライとして救済する
             const isReplyToOP = currentThreadOP && (
                 lowerHandle === currentThreadOP.toLowerCase() ||
-                replyTargets.has(currentThreadOP.toLowerCase())
+                replyTargets.has(currentThreadOP.toLowerCase()) ||
+                (lastVisibleUser && lastVisibleUser === currentThreadOP.toLowerCase())
             );
             const isDirectReplyToLast = lastVisibleUser && replyTargets.has(lastVisibleUser);
 
