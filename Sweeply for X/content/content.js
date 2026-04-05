@@ -478,16 +478,23 @@ function applyThreadUserSpamFilter() {
         let lastVisibleUser = currentThreadOP ? currentThreadOP.toLowerCase() : null;
 
         for (const article of articles) {
+            // 修正1：未処理チェックの前に、まずハンドル名を取得する（DOMがあれば取得可能）
+            const handle = getUsername(article);
+            if (!handle) continue;
+            const lowerHandle = handle.toLowerCase();
+
             // 既に非表示（別フィルター）ならスキップ（非表示要素は直前のユーザーとしてカウントしない）
             if (article.style.display === 'none' && !article.dataset.linzuSpamHidden) continue;
 
-            // 未処理ならスキップ
-            if (!article.dataset.linzuProcessed) continue;
-
-            const handle = getUsername(article);
-            if (!handle) continue;
-
-            const lowerHandle = handle.toLowerCase();
+            // 修正2：未処理（linzuProcessed=false）の要素は原則スキップするが、
+            // スレッド主（OP）のツイートだけは会話の文脈（バトン）を維持するために絶対にスキップしない。
+            if (!article.dataset.linzuProcessed) {
+                if (currentThreadOP && lowerHandle === currentThreadOP.toLowerCase()) {
+                    // スレッド主なのでスキップせずに下（Step 1）の評価へ進め、lastVisibleUserを更新させる
+                } else {
+                    continue; // OP以外で未処理なら通常通りスキップ
+                }
+            }
 
             // ステータスIDが取得できない場合（読み込み中等）の対策
             let statusId = getStatusId(article);
