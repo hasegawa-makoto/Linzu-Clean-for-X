@@ -537,7 +537,12 @@ function applyThreadUserSpamFilter() {
             // 条件A: 直前の人が「スレッド主(OP)」である（A->B->A->B の連続性を保護）
             // 条件B: このツイートの「返信先」に、直前の表示者(lastVisibleUser)が含まれている
             const replyTargets = getReplyTargets(article);
-            const isReplyToOP = currentThreadOP && lastVisibleUser === currentThreadOP.toLowerCase();
+
+            // 修正：lastVisibleUserの有無に関わらず、OPへの直接リプライなら救済する
+            const isReplyToOP = currentThreadOP && (
+                lowerHandle === currentThreadOP.toLowerCase() ||
+                replyTargets.has(currentThreadOP.toLowerCase())
+            );
             const isDirectReplyToLast = lastVisibleUser && replyTargets.has(lastVisibleUser);
 
             if (isReplyToOP || isDirectReplyToLast) {
@@ -865,6 +870,13 @@ document.addEventListener('click', () => {
     setTimeout(() => isRealNavigation = false, 2000);
 });
 
+function fastIdentifyOP() {
+    const pathParts = window.location.pathname.split('/');
+    if (pathParts.length >= 2 && pathParts[2] === 'status') {
+        currentThreadOP = pathParts[1].toLowerCase();
+    }
+}
+
 function startObserver() {
   if (observer) observer.disconnect();
 
@@ -872,23 +884,22 @@ function startObserver() {
     if (!appSettings.isEnabled) return;
 
     if (location.href !== lastUrl) {
+        // 無条件で強制リセット
+        mainListSeenUsers.clear();
+        resetSession();
+        currentThreadOP = null;
+        fastIdentifyOP(); // URLから即座にOPを特定
+
         if (isRealNavigation) {
-            // 真のナビゲーション時のみ、新しいスレッドの親IDをロックする
             const match = location.pathname.match(/\/status\/(\d+)/);
             currentThreadBaseStatusId = match ? match[1] : null;
 
-            mainListSeenUsers.clear();
-            resetSession();
-
-            // SPA Full Re-evaluation
-            // Ensure all tweets on the newly rendered page are properly processed
             restoreAllVisibility();
             const articles = document.querySelectorAll('article[data-testid="tweet"]');
             scanNodes(articles);
 
             isRealNavigation = false; // consume
         }
-        // Always update lastUrl to stop looping, but only reset context if it was a real navigation
         lastUrl = location.href;
     }
 
