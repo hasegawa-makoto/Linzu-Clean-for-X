@@ -85,14 +85,20 @@ function updateUIText() {
     const ownerLabel = document.querySelector('label[for="linzu-owner"]');
     const searchInput = document.getElementById('linzu-search');
 
-    // License Warning
-    const licenseWarning = document.getElementById('linzu-license-warning');
-    if (licenseWarning) {
+    // License Logic for Floating UI
+    const licenseWrapper = document.getElementById('linzu-license-wrapper');
+    const mainControls = document.getElementById('linzu-main-controls');
+    const licenseStatusLabel = document.getElementById('linzu-license-status-label');
+
+    if (licenseWrapper && mainControls && licenseStatusLabel) {
         if (appSettings.licenseStatus === 'active') {
-            licenseWarning.style.display = 'none';
+            licenseWrapper.style.display = 'none';
+            mainControls.style.display = 'block';
+            licenseStatusLabel.style.display = 'block';
         } else {
-            licenseWarning.style.display = 'block';
-            licenseWarning.textContent = LinzuI18n.t('ui_license_required');
+            licenseWrapper.style.display = 'block';
+            mainControls.style.display = 'none';
+            licenseStatusLabel.style.display = 'none';
         }
     }
 
@@ -139,19 +145,31 @@ function injectFloatingUI() {
         </label>
       </div>
 
-      <div id="linzu-license-warning" style="display:none; color:red; font-size:10px; margin-bottom:5px; text-align:center;">
-          ${LinzuI18n.t('ui_license_required')}
+      <div id="linzu-license-status-label" style="display:none; font-size:10px; color:green; text-align:center; margin-bottom: 5px;">
+        Pro License: Active
       </div>
 
-      <div class="linzu-controls">
-        <label class="linzu-control-item" for="linzu-owner">
-          <input type="checkbox" id="linzu-owner"> ${LinzuI18n.t('ui_dynamic_owner')}
-        </label>
-        <input type="text" id="linzu-search" class="linzu-search-input" placeholder="${LinzuI18n.t('ui_dynamic_search')}">
+      <div id="linzu-license-wrapper" style="display:none; text-align:center; padding: 10px;">
+          <div style="color:red; font-size:12px; margin-bottom:8px; font-weight:bold;">License key required</div>
+          <input type="text" id="linzu-license-input" placeholder="License Key" style="width:90%; padding:5px; margin-bottom:5px; box-sizing:border-box;">
+          <button id="linzu-activate-btn" style="width:90%; padding:5px; background:#1DA1F2; color:white; border:none; border-radius:4px; cursor:pointer;">Activate</button>
+          <div id="linzu-license-error" style="color:red; font-size:10px; margin-top:5px; display:none;">Invalid Key</div>
+          <div style="margin-top:10px;">
+            <a href="https://buy.stripe.com/test_5kQ14ndVpa6Gag208YbAs00" target="_blank" class="linzu-get-license-link" style="color:#1DA1F2; font-size:11px; text-decoration:none;">Get a License key</a>
+          </div>
       </div>
 
-      <div class="linzu-stats">
-        <span class="linzu-stats-label">${LinzuI18n.t('ui_removed')}</span> <span id="linzu-count">0</span>
+      <div id="linzu-main-controls">
+        <div class="linzu-controls">
+          <label class="linzu-control-item" for="linzu-owner">
+            <input type="checkbox" id="linzu-owner"> ${LinzuI18n.t('ui_dynamic_owner')}
+          </label>
+          <input type="text" id="linzu-search" class="linzu-search-input" placeholder="${LinzuI18n.t('ui_dynamic_search')}">
+        </div>
+
+        <div class="linzu-stats">
+          <span class="linzu-stats-label">${LinzuI18n.t('ui_removed')}</span> <span id="linzu-count">0</span>
+        </div>
       </div>
 
       <div class="linzu-footer">
@@ -179,6 +197,34 @@ function injectFloatingUI() {
       updateUIText(); // Check license display
       updateCounterDisplay();
     });
+
+    // License Activation
+    const activateBtn = document.getElementById('linzu-activate-btn');
+    const licenseInput = document.getElementById('linzu-license-input');
+    const licenseError = document.getElementById('linzu-license-error');
+
+    if (activateBtn && licenseInput && licenseError) {
+        activateBtn.addEventListener('click', () => {
+            const key = licenseInput.value.trim().toUpperCase();
+            if (key === 'SWPLY-PRO-TEST-2026') {
+                chrome.storage.local.set({ licenseStatus: 'active', licenseKey: key }, () => {
+                    appSettings.licenseStatus = 'active';
+                    licenseError.style.display = 'none';
+                    updateUIText();
+
+                    // Restart main features
+                    if (appSettings.isEnabled) {
+                        startObserver();
+                        const articles = document.querySelectorAll('article[data-testid="tweet"]');
+                        scanNodes(articles);
+                    }
+                });
+            } else {
+                licenseError.style.display = 'block';
+                licenseError.textContent = 'Invalid Key';
+            }
+        });
+    }
 
     // Toggle
     toggle.addEventListener('change', (e) => {
