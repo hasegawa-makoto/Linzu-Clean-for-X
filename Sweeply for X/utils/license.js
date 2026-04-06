@@ -21,15 +21,8 @@ const LinzuLicense = {
         const cleanKey = key.trim().toUpperCase();
         let success = false;
 
-        // 1. Check for Master Key (Developer Bypass)
-        // Hardcoded developer key for testing/admin purposes
-        if (cleanKey === 'LINZU-DEV-2026-MASTER-ADMIN') {
-            success = true;
-        }
-
-        // 2. Standard Validation (Dummy)
-        // Must start with LINZU-PRO- and be longer than 10 chars
-        else if (cleanKey.startsWith('LINZU-PRO-') && cleanKey.length > 10) {
+        // Strict Validation for fully paid model
+        if (cleanKey === 'SWPLY-PRO-TEST-2026') {
             success = true;
         }
 
