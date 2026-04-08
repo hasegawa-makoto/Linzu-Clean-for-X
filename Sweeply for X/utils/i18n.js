@@ -17,6 +17,7 @@ window.LinzuI18n = {
       ui_activate_btn: '認証',
       ui_invalid_key: '無効なキーです',
       ui_get_license: 'ライセンスを取得する',
+      ui_tokushoho: '特定商取引法に基づく表記',
 
       ui_dynamic_owner: '本人のみ表示',
       ui_dynamic_search: 'ユーザー検索 (@ID)',
@@ -80,6 +81,7 @@ window.LinzuI18n = {
       ui_activate_btn: 'Activate',
       ui_invalid_key: 'Invalid Key',
       ui_get_license: 'Get a License key',
+      ui_tokushoho: 'Legal Notice (Tokushoho)',
 
       ui_dynamic_owner: 'Owner Only',
       ui_dynamic_search: 'Focus User (@ID)',

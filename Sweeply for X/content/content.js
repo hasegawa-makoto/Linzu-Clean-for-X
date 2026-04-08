@@ -95,11 +95,22 @@ function updateUIText() {
     const activateBtn = document.getElementById('linzu-activate-btn');
     const licenseError = document.getElementById('linzu-license-error');
     const getLicenseLink = document.getElementById('linzu-get-license-link');
+    const tokushohoLink = document.getElementById('linzu-tokushoho-link');
 
     if (licenseReqTitle) licenseReqTitle.textContent = LinzuI18n.t('ui_license_req_title');
     if (activateBtn) activateBtn.textContent = LinzuI18n.t('ui_activate_btn');
-    if (getLicenseLink) getLicenseLink.textContent = LinzuI18n.t('ui_get_license');
     if (licenseError && licenseError.style.display === 'block') licenseError.textContent = LinzuI18n.t('ui_invalid_key');
+    if (tokushohoLink) tokushohoLink.textContent = LinzuI18n.t('ui_tokushoho');
+
+    if (getLicenseLink) {
+        getLicenseLink.textContent = LinzuI18n.t('ui_get_license');
+        const lang = navigator.language || navigator.userLanguage || '';
+        if (lang.includes('ja')) {
+            getLicenseLink.href = 'https://buy.stripe.com/cNi3cv7txa1U1Pn8ZEaEE00';
+        } else {
+            getLicenseLink.href = 'https://buy.stripe.com/28E28r5lpgqi2TrdfUaEE01';
+        }
+    }
 
     if (licenseWrapper && mainControls && licenseStatusLabel) {
         if (appSettings.licenseStatus === 'active') {
@@ -165,8 +176,9 @@ function injectFloatingUI() {
           <input type="text" id="linzu-license-input" placeholder="License Key" style="width:90%; padding:5px; margin-bottom:5px; box-sizing:border-box;">
           <button id="linzu-activate-btn" style="width:90%; padding:5px; background:#1DA1F2; color:white; border:none; border-radius:4px; cursor:pointer;">${LinzuI18n.t('ui_activate_btn')}</button>
           <div id="linzu-license-error" style="color:red; font-size:10px; margin-top:5px; display:none;">${LinzuI18n.t('ui_invalid_key')}</div>
-          <div style="margin-top:10px;">
-            <a href="https://buy.stripe.com/test_5kQ14ndVpa6Gag208YbAs00" id="linzu-get-license-link" target="_blank" class="linzu-get-license-link" style="color:#1DA1F2; font-size:11px; text-decoration:none;">${LinzuI18n.t('ui_get_license')}</a>
+          <div style="margin-top:10px; display:flex; flex-direction:column; gap:5px; align-items:center;">
+            <a href="https://buy.stripe.com/cNi3cv7txa1U1Pn8ZEaEE00" id="linzu-get-license-link" target="_blank" class="linzu-get-license-link" style="color:#1DA1F2; font-size:11px; text-decoration:none;">${LinzuI18n.t('ui_get_license')}</a>
+            <a href="https://sites.google.com/view/sweeply-for-x/home/tokushoho" id="linzu-tokushoho-link" target="_blank" style="color:#657786; font-size:10px; text-decoration:underline;">${LinzuI18n.t('ui_tokushoho')}</a>
           </div>
       </div>
 
