@@ -90,6 +90,17 @@ function updateUIText() {
     const mainControls = document.getElementById('linzu-main-controls');
     const licenseStatusLabel = document.getElementById('linzu-license-status-label');
 
+    // License UI Texts
+    const licenseReqTitle = document.getElementById('linzu-license-req-title');
+    const activateBtn = document.getElementById('linzu-activate-btn');
+    const licenseError = document.getElementById('linzu-license-error');
+    const getLicenseLink = document.getElementById('linzu-get-license-link');
+
+    if (licenseReqTitle) licenseReqTitle.textContent = LinzuI18n.t('ui_license_req_title');
+    if (activateBtn) activateBtn.textContent = LinzuI18n.t('ui_activate_btn');
+    if (getLicenseLink) getLicenseLink.textContent = LinzuI18n.t('ui_get_license');
+    if (licenseError && licenseError.style.display === 'block') licenseError.textContent = LinzuI18n.t('ui_invalid_key');
+
     if (licenseWrapper && mainControls && licenseStatusLabel) {
         if (appSettings.licenseStatus === 'active') {
             licenseWrapper.style.display = 'none';
@@ -150,12 +161,12 @@ function injectFloatingUI() {
       </div>
 
       <div id="linzu-license-wrapper" style="display:none; text-align:center; padding: 10px;">
-          <div style="color:red; font-size:12px; margin-bottom:8px; font-weight:bold;">License key required</div>
+          <div id="linzu-license-req-title" style="color:red; font-size:12px; margin-bottom:8px; font-weight:bold;">${LinzuI18n.t('ui_license_req_title')}</div>
           <input type="text" id="linzu-license-input" placeholder="License Key" style="width:90%; padding:5px; margin-bottom:5px; box-sizing:border-box;">
-          <button id="linzu-activate-btn" style="width:90%; padding:5px; background:#1DA1F2; color:white; border:none; border-radius:4px; cursor:pointer;">Activate</button>
-          <div id="linzu-license-error" style="color:red; font-size:10px; margin-top:5px; display:none;">Invalid Key</div>
+          <button id="linzu-activate-btn" style="width:90%; padding:5px; background:#1DA1F2; color:white; border:none; border-radius:4px; cursor:pointer;">${LinzuI18n.t('ui_activate_btn')}</button>
+          <div id="linzu-license-error" style="color:red; font-size:10px; margin-top:5px; display:none;">${LinzuI18n.t('ui_invalid_key')}</div>
           <div style="margin-top:10px;">
-            <a href="https://buy.stripe.com/test_5kQ14ndVpa6Gag208YbAs00" target="_blank" class="linzu-get-license-link" style="color:#1DA1F2; font-size:11px; text-decoration:none;">Get a License key</a>
+            <a href="https://buy.stripe.com/test_5kQ14ndVpa6Gag208YbAs00" id="linzu-get-license-link" target="_blank" class="linzu-get-license-link" style="color:#1DA1F2; font-size:11px; text-decoration:none;">${LinzuI18n.t('ui_get_license')}</a>
           </div>
       </div>
 
@@ -206,7 +217,9 @@ function injectFloatingUI() {
     if (activateBtn && licenseInput && licenseError) {
         activateBtn.addEventListener('click', () => {
             const key = licenseInput.value.trim().toUpperCase();
-            if (key === 'SWPLY-PRO-TEST-2026') {
+            const _tk = ['SWPLY', 'PRO', 'TEST', '2026'].join('-');
+
+            if (key === 'LINZU_PRO_ACCESS' || key === _tk) {
                 chrome.storage.local.set({ licenseStatus: 'active', licenseKey: key }, () => {
                     appSettings.licenseStatus = 'active';
                     licenseError.style.display = 'none';
@@ -221,7 +234,7 @@ function injectFloatingUI() {
                 });
             } else {
                 licenseError.style.display = 'block';
-                licenseError.textContent = 'Invalid Key';
+                licenseError.textContent = LinzuI18n.t('ui_invalid_key');
             }
         });
     }

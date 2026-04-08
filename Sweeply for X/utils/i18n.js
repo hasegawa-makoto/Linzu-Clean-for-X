@@ -13,6 +13,10 @@ window.LinzuI18n = {
       ui_hide_panel: 'パネルを閉じる',
       ui_show_panel: 'パネルを表示',
       ui_license_required: '有効なライセンスが必要です',
+      ui_license_req_title: 'ライセンスキーが必要です',
+      ui_activate_btn: '認証',
+      ui_invalid_key: '無効なキーです',
+      ui_get_license: 'ライセンスを取得する',
 
       ui_dynamic_owner: '本人のみ表示',
       ui_dynamic_search: 'ユーザー検索 (@ID)',
@@ -72,6 +76,10 @@ window.LinzuI18n = {
       ui_hide_panel: 'Hide Panel',
       ui_show_panel: 'Show Panel',
       ui_license_required: 'Valid License Required',
+      ui_license_req_title: 'License key required',
+      ui_activate_btn: 'Activate',
+      ui_invalid_key: 'Invalid Key',
+      ui_get_license: 'Get a License key',
 
       ui_dynamic_owner: 'Owner Only',
       ui_dynamic_search: 'Focus User (@ID)',
