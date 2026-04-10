@@ -22,7 +22,8 @@ const LinzuLicense = {
         let success = false;
 
         const _tk = ['SWPLY', 'PRO', 'TEST', '2026'].join('-');
-        if (cleanKey === 'LINZU_PRO_ACCESS' || cleanKey === _tk) {
+        const _pk = ['SWEEPLY', 'PRO', 'UNLIMITED'].join('-');
+        if (cleanKey === _pk || cleanKey === _tk) {
             success = true;
         }
 

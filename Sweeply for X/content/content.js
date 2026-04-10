@@ -69,6 +69,7 @@ let currentThreadBaseStatusId = (() => {
 
 // Global session tracking for thread-specific duplicate filtering
 const mainListSeenUsers = new Map();
+const opInteractedUsers = new Set();
 
 // Debounce Timer for Dynamic Filters
 let dynamicFilterTimeout = null;
@@ -230,8 +231,9 @@ function injectFloatingUI() {
         activateBtn.addEventListener('click', () => {
             const key = licenseInput.value.trim().toUpperCase();
             const _tk = ['SWPLY', 'PRO', 'TEST', '2026'].join('-');
+            const _pk = ['SWEEPLY', 'PRO', 'UNLIMITED'].join('-');
 
-            if (key === 'LINZU_PRO_ACCESS' || key === _tk) {
+            if (key === _pk || key === _tk) {
                 chrome.storage.local.set({ licenseStatus: 'active', licenseKey: key }, () => {
                     appSettings.licenseStatus = 'active';
                     licenseError.style.display = 'none';
@@ -813,6 +815,24 @@ function processTweet(article) {
         currentThreadOP = handle;
     }
 
+    if (currentThreadOP && handle && currentThreadOP.toLowerCase() === handle.toLowerCase()) {
+        const replyTargets = getReplyTargets(article);
+        replyTargets.forEach(target => opInteractedUsers.add(target));
+
+        const hiddenArticles = document.querySelectorAll('article[data-linzu-hidden="true"], article[data-linzu-spam-hidden="true"]');
+        hiddenArticles.forEach(hiddenArticle => {
+            const hiddenHandle = getUsername(hiddenArticle);
+            if (hiddenHandle && opInteractedUsers.has(hiddenHandle.toLowerCase())) {
+                hiddenArticle.style.display = '';
+                delete hiddenArticle.dataset.linzuHidden;
+                delete hiddenArticle.dataset.linzuSpamHidden;
+            }
+        });
+
+        markPermitted(statusId);
+        return;
+    }
+
     // --- Virtual Scroll Absolute Protection ---
     // If we've already permitted this exact status ID in this session, skip ALL checks
     if (statusId && permittedStatusIds.has(statusId)) {
@@ -840,6 +860,7 @@ function processTweet(article) {
 
     // Filter Checks (Strict Gating)
     const runFilters = () => {
+        if (handle && typeof opInteractedUsers !== 'undefined' && opInteractedUsers.has(handle.toLowerCase())) return false;
         if (appSettings.filterBot?.digits && checkBotDigits(handle)) return true;
         if (appSettings.filterBot?.defaultIcon && checkBotDefaultIcon(article)) return true;
         if (appSettings.filterBot?.emoji && checkBotEmoji(article)) return true;
@@ -899,6 +920,7 @@ function resetSession() {
     seenContent.clear();
     permittedStatusIds.clear();
     hiddenStatusIds.clear();
+    opInteractedUsers.clear();
     currentThreadOP = null;
     lastUrl = location.href;
     updateCounterDisplay();
