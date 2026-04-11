@@ -501,11 +501,16 @@ function applyDynamicFilters() {
       let shouldHide = false;
       const username = getUsername(article);
 
-      if (hasOwnerFilter) {
-          if (username !== currentProfileOwner) shouldHide = true;
-      }
-      if (!shouldHide && hasFocusFilter) {
-          if (username !== dynamicSettings.focusUser) shouldHide = true;
+      // OP Interaction Protection
+      if (username && typeof opInteractedUsers !== 'undefined' && opInteractedUsers.has(username.toLowerCase())) {
+          shouldHide = false;
+      } else {
+          if (hasOwnerFilter) {
+              if (username !== currentProfileOwner) shouldHide = true;
+          }
+          if (!shouldHide && hasFocusFilter) {
+              if (username !== dynamicSettings.focusUser) shouldHide = true;
+          }
       }
 
       if (shouldHide) {
@@ -564,6 +569,20 @@ function applyThreadUserSpamFilter() {
             const handle = getUsername(article);
             if (!handle) continue;
             const lowerHandle = handle.toLowerCase();
+
+            // OP Interaction Protection
+            if (opInteractedUsers.has(lowerHandle)) {
+                if (article.dataset.linzuSpamHidden) {
+                    article.style.display = '';
+                    delete article.dataset.linzuSpamHidden;
+                }
+
+                const statusId = getStatusId(article);
+                if (statusId) markPermitted(statusId);
+
+                lastVisibleUser = lowerHandle;
+                continue;
+            }
 
             // 既に非表示（別フィルター）ならスキップ（非表示要素は直前のユーザーとしてカウントしない）
             if (article.style.display === 'none' && !article.dataset.linzuSpamHidden) continue;
@@ -827,6 +846,17 @@ function processTweet(article) {
     if (currentThreadOP && handle && currentThreadOP.toLowerCase() === handle.toLowerCase()) {
         const replyTargets = getReplyTargets(article);
         replyTargets.forEach(target => opInteractedUsers.add(target));
+
+        // --- Rescue immediately preceding user in DOM (A-B-A Implicit Reply) ---
+        const allArticles = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
+        const currentIndex = allArticles.indexOf(article);
+        if (currentIndex > 0) {
+            const prevArticle = allArticles[currentIndex - 1];
+            const prevHandle = getUsername(prevArticle);
+            if (prevHandle) {
+                opInteractedUsers.add(prevHandle.toLowerCase());
+            }
+        }
 
         const hiddenArticles = document.querySelectorAll('article[data-linzu-hidden="true"], article[data-linzu-spam-hidden="true"]');
         hiddenArticles.forEach(hiddenArticle => {
