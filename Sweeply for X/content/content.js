@@ -97,11 +97,14 @@ function updateUIText() {
     const licenseError = document.getElementById('linzu-license-error');
     const getLicenseLink = document.getElementById('linzu-get-license-link');
     const tokushohoLink = document.getElementById('linzu-tokushoho-link');
+    const licenseInput = document.getElementById('linzu-license-input');
 
     if (licenseReqTitle) licenseReqTitle.textContent = LinzuI18n.t('ui_license_req_title');
     if (activateBtn) activateBtn.textContent = LinzuI18n.t('ui_activate_btn');
     if (licenseError && licenseError.style.display === 'block') licenseError.textContent = LinzuI18n.t('ui_invalid_key');
     if (tokushohoLink) tokushohoLink.textContent = LinzuI18n.t('ui_tokushoho');
+    if (licenseStatusLabel) licenseStatusLabel.textContent = LinzuI18n.t('ui_license_active');
+    if (licenseInput) licenseInput.placeholder = LinzuI18n.t('ui_license_placeholder');
 
     if (getLicenseLink) {
         getLicenseLink.textContent = LinzuI18n.t('ui_get_license');
@@ -173,12 +176,12 @@ function injectFloatingUI() {
       </div>
 
       <div id="linzu-license-status-label" style="display:none; font-size:10px; color:green; text-align:center; margin-bottom: 5px;">
-        Pro License: Active
+        ${LinzuI18n.t('ui_license_active')}
       </div>
 
       <div id="linzu-license-wrapper" style="display:none; text-align:center; padding: 10px;">
           <div id="linzu-license-req-title" style="color:red; font-size:12px; margin-bottom:8px; font-weight:bold;">${LinzuI18n.t('ui_license_req_title')}</div>
-          <input type="text" id="linzu-license-input" placeholder="License Key" style="width:90%; padding:5px; margin-bottom:5px; box-sizing:border-box;">
+          <input type="text" id="linzu-license-input" placeholder="${LinzuI18n.t('ui_license_placeholder')}" style="width:90%; padding:5px; margin-bottom:5px; box-sizing:border-box;">
           <button id="linzu-activate-btn" style="width:90%; padding:5px; background:#1DA1F2; color:white; border:none; border-radius:4px; cursor:pointer;">${LinzuI18n.t('ui_activate_btn')}</button>
           <div id="linzu-license-error" style="color:red; font-size:10px; margin-top:5px; display:none;">${LinzuI18n.t('ui_invalid_key')}</div>
           <div style="margin-top:10px; display:flex; flex-direction:column; gap:5px; align-items:center;">
@@ -832,6 +835,12 @@ function processTweet(article) {
                 hiddenArticle.style.display = '';
                 delete hiddenArticle.dataset.linzuHidden;
                 delete hiddenArticle.dataset.linzuSpamHidden;
+
+                const hiddenStatusId = getStatusId(hiddenArticle);
+                if (hiddenStatusId) {
+                    hiddenStatusIds.delete(hiddenStatusId);
+                    markPermitted(hiddenStatusId);
+                }
             }
         });
 
