@@ -34,6 +34,18 @@ document.addEventListener('DOMContentLoaded', () => {
         LinzuI18n.translatePage();
     });
 
+    // --- Link Helper ---
+    function updateStripeLink(lang) {
+        const getLicenseLink = document.getElementById('opt-get-license-link');
+        if (getLicenseLink) {
+            if (lang.includes('ja')) {
+                getLicenseLink.href = 'https://buy.stripe.com/cNi3cv7txa1U1Pn8ZEaEE00';
+            } else {
+                getLicenseLink.href = 'https://buy.stripe.com/28E28r5lpgqi2TrdfUaEE01';
+            }
+        }
+    }
+
     // --- UI Language Change ---
     uiLanguageSelect.addEventListener('change', (e) => {
         const newLang = e.target.value;
@@ -42,6 +54,7 @@ document.addEventListener('DOMContentLoaded', () => {
              LinzuI18n.translatePage();
              // Update dynamic texts
              updateLicenseStatusText();
+             updateStripeLink(newLang);
              // Update button text
              if (licenseKeyInput.disabled) {
                  activateBtn.textContent = LinzuI18n.t('opt_deactivate');
@@ -61,8 +74,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 LinzuI18n.setLocale(items.language, () => {
                     LinzuI18n.translatePage();
                 });
+                updateStripeLink(items.language);
             } else {
                 uiLanguageSelect.value = 'ja'; // default
+                updateStripeLink('ja');
             }
 
             // License

@@ -114,12 +114,16 @@ function updateUIText() {
     }
 
     if (licenseWrapper && mainControls && licenseStatusLabel) {
+        // Also respect minimized state to prevent layout breaking
+        const uiContainer = document.getElementById('linzu-floating-ui');
+        const isMinimized = uiContainer && uiContainer.classList.contains('linzu-minimized');
+
         if (appSettings.licenseStatus === 'active') {
             licenseWrapper.style.display = 'none';
-            mainControls.style.display = 'block';
-            licenseStatusLabel.style.display = 'block';
+            mainControls.style.display = isMinimized ? 'none' : 'block';
+            licenseStatusLabel.style.display = isMinimized ? 'none' : 'block';
         } else {
-            licenseWrapper.style.display = 'block';
+            licenseWrapper.style.display = isMinimized ? 'none' : 'block';
             mainControls.style.display = 'none';
             licenseStatusLabel.style.display = 'none';
         }
@@ -276,6 +280,7 @@ function injectFloatingUI() {
         appSettings.isMinimized = true;
         uiContainer.classList.add('linzu-minimized');
         chrome.storage.local.set({ isMinimized: true });
+        updateUIText();
     });
 
     uiContainer.addEventListener('click', (e) => {
@@ -283,6 +288,7 @@ function injectFloatingUI() {
             appSettings.isMinimized = false;
             uiContainer.classList.remove('linzu-minimized');
             chrome.storage.local.set({ isMinimized: false });
+            updateUIText();
         }
     });
 
