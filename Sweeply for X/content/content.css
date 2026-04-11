@@ -29,8 +29,10 @@
 
 #linzu-floating-ui.linzu-minimized .linzu-controls,
 #linzu-floating-ui.linzu-minimized .linzu-footer,
-#linzu-floating-ui.linzu-minimized .linzu-switch {
-  display: none;
+#linzu-floating-ui.linzu-minimized .linzu-switch,
+#linzu-floating-ui.linzu-minimized #linzu-license-wrapper,
+#linzu-floating-ui.linzu-minimized #linzu-license-status-label {
+  display: none !important;
 }
 
 #linzu-floating-ui.linzu-minimized .linzu-header {
