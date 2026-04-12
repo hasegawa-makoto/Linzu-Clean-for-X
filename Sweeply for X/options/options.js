@@ -129,10 +129,12 @@ document.addEventListener('DOMContentLoaded', () => {
              isValid = LinzuLicense.check();
         }
 
+        const licenseSection = document.getElementById('opt-license-section');
+
         if (isValid) {
-            licenseMsg.textContent = LinzuI18n.t('opt_license_active');
-            licenseMsg.className = 'status-msg success';
+            if (licenseSection) licenseSection.style.display = 'none';
         } else {
+            if (licenseSection) licenseSection.style.display = 'block';
             licenseMsg.textContent = LinzuI18n.t('opt_license_inactive');
             licenseMsg.className = 'status-msg error';
         }
