@@ -551,6 +551,13 @@ function markPermitted(statusId) {
 
 // --- Filtering Logic (Permanent) ---
 
+let threadSpamFilterTimeout = null;
+
+function scheduleThreadSpamFilter() {
+    if (threadSpamFilterTimeout) clearTimeout(threadSpamFilterTimeout);
+    threadSpamFilterTimeout = setTimeout(applyThreadUserSpamFilter, 200);
+}
+
 function applyThreadUserSpamFilter() {
     try {
         if (!appSettings.isEnabled || !appSettings.filterUserSpam || appSettings.licenseStatus !== 'active') return;
@@ -847,15 +854,19 @@ function processTweet(article) {
         const replyTargets = getReplyTargets(article);
         replyTargets.forEach(target => opInteractedUsers.add(target));
 
-        // --- Rescue immediately preceding user in DOM (A-B-A Implicit Reply) ---
+        // --- Rescue immediately preceding valid user in DOM (A-B-A Implicit Reply, skip Promoted) ---
         const allArticles = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
-        const currentIndex = allArticles.indexOf(article);
-        if (currentIndex > 0) {
-            const prevArticle = allArticles[currentIndex - 1];
+        let searchIndex = allArticles.indexOf(article) - 1;
+        while (searchIndex >= 0) {
+            const prevArticle = allArticles[searchIndex];
             const prevHandle = getUsername(prevArticle);
+            // check for ad spans or valid handles. getUsername safely returns only '@xxxx' format.
+            // If it has a valid handle, it's a real user tweet. If not, it's likely an ad or skeleton.
             if (prevHandle) {
                 opInteractedUsers.add(prevHandle.toLowerCase());
+                break; // Found the immediate predecessor, stop searching
             }
+            searchIndex--;
         }
 
         const hiddenArticles = document.querySelectorAll('article[data-linzu-hidden="true"], article[data-linzu-spam-hidden="true"]');
@@ -995,9 +1006,6 @@ LinzuI18n.init(() => {
       injectFloatingUI();
       startObserver();
 
-      // ユーザー要望による0.5秒間隔の物理的な重複排除スキャン
-      setInterval(applyThreadUserSpamFilter, 500);
-
       const existingArticles = document.querySelectorAll('article[data-testid="tweet"]');
       if (existingArticles.length > 0) {
           scanNodes(existingArticles);
@@ -1016,6 +1024,12 @@ document.addEventListener('click', () => {
     isRealNavigation = true;
     setTimeout(() => isRealNavigation = false, 2000);
 });
+
+window.addEventListener('scroll', () => {
+    if (appSettings.isEnabled) {
+        scheduleThreadSpamFilter();
+    }
+}, { passive: true });
 
 function fastIdentifyOP() {
     const pathParts = window.location.pathname.split('/');
@@ -1062,6 +1076,7 @@ function startObserver() {
 
     if (addedNodes.length > 0) {
       scanNodes(addedNodes);
+      scheduleThreadSpamFilter();
     }
   });
 
