@@ -647,17 +647,22 @@ function applyThreadUserSpamFilter() {
                 continue;
             }
 
+            // --- ステップ2.5：非OPによる連続投稿（自己リプライや連投スパム）の強制ブロック ---
+            if (lastVisibleUser === lowerHandle && (!currentThreadOP || lowerHandle !== currentThreadOP.toLowerCase())) {
+                article.style.display = 'none';
+                article.dataset.linzuSpamHidden = 'true';
+                // ※非表示にしたので lastVisibleUser は更新しない
+                continue;
+            }
+
             // --- ステップ3：会話チェーン（ABAB）の厳格な救済 ---
             // 2回目以降の登場だが、「正当な会話」として許可する条件
             // 条件A: 直前の人が「スレッド主(OP)」である（A->B->A->B の連続性を保護）
             // 条件B: このツイートの「返信先」に、直前の表示者(lastVisibleUser)が含まれている
             const replyTargets = getReplyTargets(article);
 
-            // 修正：lastVisibleUserの有無に関わらず、OPへの直接リプライなら救済する
-            // 追加：主役ツイートの直下（lastVisibleUser === OP）は宛先が省略されるため暗黙のリプライとして救済する
+            // 修正：すべての直接リプライを許可する穴を塞ぎ、「直前の表示者がOPである場合」のみに厳格化
             const isReplyToOP = currentThreadOP && (
-                lowerHandle === currentThreadOP.toLowerCase() ||
-                replyTargets.has(currentThreadOP.toLowerCase()) ||
                 (lastVisibleUser && lastVisibleUser === currentThreadOP.toLowerCase())
             );
             const isDirectReplyToLast = lastVisibleUser && replyTargets.has(lastVisibleUser);
