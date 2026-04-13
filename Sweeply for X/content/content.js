@@ -996,6 +996,7 @@ function restoreAllVisibility() {
     seenContent.clear();
     permittedStatusIds.clear();
     hiddenStatusIds.clear();
+    opInteractedUsers.clear();
     currentThreadOP = null;
 
     updateCounterDisplay();
