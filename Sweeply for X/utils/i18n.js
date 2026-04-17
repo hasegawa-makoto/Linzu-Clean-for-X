@@ -15,7 +15,7 @@ window.LinzuI18n = {
       ui_license_required: '有効なライセンスが必要です',
       ui_license_req_title: 'ライセンスキーが必要です',
       ui_activate_btn: '認証',
-      ui_invalid_key: '無効なキーです',
+      ui_invalid_key: 'ライセンスキーが正しくありません',
       ui_get_license: 'ライセンスを取得する',
       ui_tokushoho: '特定商取引法に基づく表記',
       ui_license_active: 'Proライセンス有効',

@@ -22,7 +22,7 @@ const LinzuLicense = {
         let success = false;
 
         const _tk = ['SWPLY', 'PRO', 'TEST', '2026'].join('-');
-        const _pk = ['SWEEPLY', 'PRO', 'UNLIMITED'].join('-');
+        const _pk = ['LINZU', 'PRO', 'ACCESS'].join('-'); // 本番用キー
         if (cleanKey === _pk || cleanKey === _tk) {
             success = true;
         }
