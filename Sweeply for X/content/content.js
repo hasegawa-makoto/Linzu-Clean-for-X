@@ -238,7 +238,7 @@ function injectFloatingUI() {
         activateBtn.addEventListener('click', () => {
             const key = licenseInput.value.trim().toUpperCase();
             const _tk = ['SWPLY', 'PRO', 'TEST', '2026'].join('-');
-            const _pk = ['SWEEPLY', 'PRO', 'UNLIMITED'].join('-');
+            const _pk = ['LINZU', 'PRO', 'ACCESS'].join('-'); // 本番用キー
 
             if (key === _pk || key === _tk) {
                 chrome.storage.local.set({ licenseStatus: 'active', licenseKey: key }, () => {

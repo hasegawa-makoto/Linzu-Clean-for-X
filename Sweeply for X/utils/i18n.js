@@ -19,7 +19,7 @@ window.LinzuI18n = {
       ui_get_license: 'ライセンスを取得する',
       ui_tokushoho: '特定商取引法に基づく表記',
       ui_license_active: 'Proライセンス有効',
-      ui_license_placeholder: 'ライセンスキー',
+      ui_license_placeholder: '認証キーを入力',
 
       ui_dynamic_owner: '本人のみ表示',
       ui_dynamic_search: 'ユーザー検索 (@ID)',

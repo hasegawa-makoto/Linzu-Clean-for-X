@@ -160,7 +160,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         licenseKeyInput.disabled = true;
                         activateBtn.textContent = LinzuI18n.t('opt_deactivate');
                     } else {
-                        licenseMsg.textContent = 'Invalid Key.'; // Not translated for error detail yet
+                        licenseMsg.textContent = LinzuI18n.t('ui_invalid_key');
                         licenseMsg.className = 'status-msg error';
                     }
                 });
